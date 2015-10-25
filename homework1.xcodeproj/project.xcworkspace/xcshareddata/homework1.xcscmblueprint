@@ -1,0 +1,30 @@
+{
+  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "9F321B1ED870C8E10D4576EFFB9F1B1DEEC50EEC",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
+
+  },
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
+    "9F321B1ED870C8E10D4576EFFB9F1B1DEEC50EEC" : 0,
+    "79A4C8E2B23CD4D68A38685E9065DA757638D5D9" : 0
+  },
+  "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "BB5235B4-686A-43A4-9624-68D51BCAFFBD",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
+    "9F321B1ED870C8E10D4576EFFB9F1B1DEEC50EEC" : "homework1\/",
+    "79A4C8E2B23CD4D68A38685E9065DA757638D5D9" : "Unix-Network-Programming\/"
+  },
+  "DVTSourceControlWorkspaceBlueprintNameKey" : "homework1",
+  "DVTSourceControlWorkspaceBlueprintVersion" : 204,
+  "DVTSourceControlWorkspaceBlueprintRelativePathToProjectKey" : "homework1.xcodeproj",
+  "DVTSourceControlWorkspaceBlueprintRemoteRepositoriesKey" : [
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "https:\/\/github.com\/hailinzeng\/Unix-Network-Programming.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "79A4C8E2B23CD4D68A38685E9065DA757638D5D9"
+    },
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "https:\/\/github.com\/Fonger\/Network-Programming-HW1.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "9F321B1ED870C8E10D4576EFFB9F1B1DEEC50EEC"
+    }
+  ]
+}
