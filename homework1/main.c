@@ -8,7 +8,7 @@
 
 #include <stdio.h>
 #include "unp.h"
-#define EXIT_SHELL 50
+#define MAXARGS 250
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
@@ -52,60 +52,72 @@ void receive_cmd(int sockfd)
     Writen(sockfd, welcome1, sizeof(welcome1));
     Writen(sockfd, welcome2, sizeof(welcome2));
     Writen(sockfd, welcome1, sizeof(welcome1));
-    
+
     showSymbol(sockfd);
     ssize_t		n;
     char		buf[MAXLINE];
-    setenv("PATH", "/bin:.", TRUE);
-    
+    char        *argv[MAXARGS];
+    char        *delim = " \n";
+
+    setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
+
 again:
     while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
         buf[n] = '\0';
+
+        char *p = strtok(buf, delim);
         
-        pid_t pid = Fork();
-        if (pid > 0) { // parent
+        if ( p == NULL)
+            continue;
+
+        if (strcmp(p, "exit") == 0)
+            return;
+        
+        int argc = 0;
+
+        argv[argc++] = p;
+        while ((p = strtok(NULL, delim)) != NULL) {
+            argv[argc++] = p;
+        }
+        
+        argv[argc] = NULL;
+        
+        for (int i = 0; i < argc; i++)
+            printf("argv[%d] = %s\n", i, argv[i]);
+
+        if (strcmp(argv[0], "printenv") == 0) {
+            for (int i = 1; i < argc; i++)
+                dprintf(sockfd, "%s=%s\n", argv[i], getenv(argv[i]));
+            showSymbol(sockfd);
+            continue;
+        }
+
+        if (strcmp(argv[0], "setenv") == 0) {
+            if (argc == 3)
+                setenv(argv[1], argv[2], TRUE);
+            else
+                dprintf(sockfd, "usage: setenv KEY VALIE\n");
+            showSymbol(sockfd);
+            continue;
+        }
+        
+        pid_t child_pid = Fork();
+        if (child_pid > 0) { // parent
+            printf("Child spawn with pid: %d\n", child_pid);
+
             int status = 0;
             while( (wait( &status ) == -1) && (errno == EINTR) );
 
             if (WIFEXITED(status)) {
-                // Check exit code
-                if (WEXITSTATUS(status) == EXIT_SHELL)
-                    return;
+                char exit_code = WEXITSTATUS(status);
+                printf("Child exit with code: %d\n", exit_code);
+                showSymbol(sockfd);
             }
-            
-            showSymbol(sockfd);
-        } else if (pid == 0) { // child
 
+        } else if (child_pid == 0) { // child
             Dup2(sockfd, STDOUT_FILENO);
             Dup2(sockfd, STDERR_FILENO);
             Close(sockfd);
-
-            char *delim = " \n";
-            
-            int argc = 0;
-            char *argv[255];
-            
-            char *p = strtok(buf, delim);
-
-            if ( p == NULL) {
-                exit(0);
-            }
-            if (strcmp(buf, "exit") == 0) {
-                exit(EXIT_SHELL);
-            }
-
-            argv[argc++] = p;
-            while ((p = strtok(NULL, delim)) != NULL) {
-                argv[argc++] = p;
-            }
-
-            argv[argc] = NULL;
-            
-            printf("argc = %d\n", argc);
-            
-            for (int i = 0; i < argc; i++) {
-                printf("argv[%d] = %s\n", i, argv[i]);
-            }
 
             execvp(argv[0], argv);
             
