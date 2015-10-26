@@ -288,11 +288,18 @@ Sockatmark(int fd)
 int
 Socket(int family, int type, int protocol)
 {
-    int		n;
+    int		fd;
     
-    if ( (n = socket(family, type, protocol)) < 0)
+    if ( (fd = socket(family, type, protocol)) < 0)
         err_sys("socket error");
-    return(n);
+
+    /* reuse socket address to prevent bind fail */
+    int reuseaddr = 1;
+    socklen_t reuseaddr_len;
+    reuseaddr_len = sizeof(reuseaddr);
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, reuseaddr_len);
+    
+    return fd;
 }
 /* end Socket */
 
