@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include "unp.h"
+#define EXIT_SHELL 50
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
@@ -34,8 +35,6 @@ int main() {
     for (;;) {
         clilen = sizeof(cliaddr);
         connfd = Accept(listenfd, (SA *) &cliaddr, &clilen);
-
-        //Close(listenfd);   // close listening socket
         receive_cmd(connfd);
         Close(connfd);       // parent closes connected socket
     }
@@ -67,6 +66,13 @@ again:
         if (pid > 0) { // parent
             int status = 0;
             while( (wait( &status ) == -1) && (errno == EINTR) );
+
+            if (WIFEXITED(status)) {
+                // Check exit code
+                if (WEXITSTATUS(status) == EXIT_SHELL)
+                    return;
+            }
+            
             showSymbol(sockfd);
         } else if (pid == 0) { // child
 
@@ -83,6 +89,9 @@ again:
 
             if ( p == NULL) {
                 exit(0);
+            }
+            if (strcmp(buf, "exit") == 0) {
+                exit(EXIT_SHELL);
             }
 
             argv[argc++] = p;
@@ -110,7 +119,6 @@ again:
         goto again;
     }
     else if (n < 0) {
-        printf("n=%lu\n", n);
         err_sys("str_echo: read error");
     }
 }
