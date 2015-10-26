@@ -58,25 +58,21 @@ void receive_cmd(int sockfd)
     ssize_t		n;
     char		buf[MAXLINE];
     setenv("PATH", "/bin:.", TRUE);
-
-
-    //Close(sockfd);
     
 again:
     while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
-        printf("Receive a command!\n");
+        buf[n] = '\0';
+        
         pid_t pid = Fork();
         if (pid > 0) { // parent
             int status = 0;
             while( (wait( &status ) == -1) && (errno == EINTR) );
+            showSymbol(sockfd);
         } else if (pid == 0) { // child
 
             Dup2(sockfd, STDOUT_FILENO);
             Dup2(sockfd, STDERR_FILENO);
             Close(sockfd);
-
-            
-            buf[n] = '\0';
 
             char *delim = " \n";
             
