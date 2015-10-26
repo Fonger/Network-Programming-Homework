@@ -49,12 +49,11 @@ int main() {
 
 void receive_cmd(int sockfd)
 {
+    showSymbol(sockfd);
     ssize_t		n;
     char		buf[MAXLINE];
     setenv("PATH", "/bin:.", TRUE);
 again:
-    showSymbol(sockfd);
-
     while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
         pid_t pid = Fork();
         if (pid > 0) { // parent
@@ -66,8 +65,9 @@ again:
             
             Close(sockfd);
             
+            printf("n=%lu\n", n);
             buf[n] = '\0';
-            
+
             char *delim = " \n";
             
             int argc = 0;
@@ -89,22 +89,26 @@ again:
                 printf("argv[%d] = %s\n", i, argv[i]);
             }
             
-            //char *const args[] = { "ls", "-al" };
-            execvp(argv[0], argv);
-            
+            int result = execvp(argv[0], argv);
+
+            if (result == -1) {
+                printf("Unknown Command: %s\n", argv[0]);
+                exit(result);
+            }
         } else {
             err_sys("fork failed");
         }
-
     }
     if (n < 0 && errno == EINTR) {
         goto again;
     }
-    else if (n < 0)
+    else if (n < 0) {
+        printf("n=%lu\n", n);
         err_sys("str_echo: read error");
+    }
 }
 
 void showSymbol(int sockfd) {
-    //char *symbol = "% ";
-    //Writen(sockfd, symbol, 2);
+//    char *symbol = "% ";
+//    Writen(sockfd, symbol, 2);
 }
