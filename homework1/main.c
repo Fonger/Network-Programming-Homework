@@ -13,11 +13,10 @@ void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
 
 int main() {
-    // insert code here...
     printf("Hello, World!\n");
     
     int listenfd, connfd;
-    pid_t childpid;
+
     socklen_t clilen;
     struct sockaddr_in cliaddr, servaddr;
     
@@ -36,10 +35,9 @@ int main() {
         clilen = sizeof(cliaddr);
         connfd = Accept(listenfd, (SA *) &cliaddr, &clilen);
 
-        //Close(listenfd);            // close listening socket
+        //Close(listenfd);   // close listening socket
         receive_cmd(connfd);
-        Close(connfd);                  // parent closes connected socket
-        Close(listenfd);
+        Close(connfd);       // parent closes connected socket
     }
     
 
@@ -49,23 +47,35 @@ int main() {
 
 void receive_cmd(int sockfd)
 {
+    char welcome1[] = "****************************************\n";
+    char welcome2[] = "** Welcome to the information server. **\n";
+    
+    Writen(sockfd, welcome1, sizeof(welcome1));
+    Writen(sockfd, welcome2, sizeof(welcome2));
+    Writen(sockfd, welcome1, sizeof(welcome1));
+    
     showSymbol(sockfd);
     ssize_t		n;
     char		buf[MAXLINE];
     setenv("PATH", "/bin:.", TRUE);
+
+
+    //Close(sockfd);
+    
 again:
     while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
+        printf("Receive a command!\n");
         pid_t pid = Fork();
         if (pid > 0) { // parent
-            int status;
-            waitpid(pid, &status, 0);
+            int status = 0;
+            while( (wait( &status ) == -1) && (errno == EINTR) );
         } else if (pid == 0) { // child
+
             Dup2(sockfd, STDOUT_FILENO);
             Dup2(sockfd, STDERR_FILENO);
-            
             Close(sockfd);
+
             
-            printf("n=%lu\n", n);
             buf[n] = '\0';
 
             char *delim = " \n";
@@ -74,8 +84,11 @@ again:
             char *argv[255];
             
             char *p = strtok(buf, delim);
-            
-            
+
+            if ( p == NULL) {
+                exit(0);
+            }
+
             argv[argc++] = p;
             while ((p = strtok(NULL, delim)) != NULL) {
                 argv[argc++] = p;
@@ -88,13 +101,11 @@ again:
             for (int i = 0; i < argc; i++) {
                 printf("argv[%d] = %s\n", i, argv[i]);
             }
-            
-            int result = execvp(argv[0], argv);
 
-            if (result == -1) {
-                printf("Unknown Command: %s\n", argv[0]);
-                exit(result);
-            }
+            execvp(argv[0], argv);
+            
+            printf("Unknown Command: [%s]\n", argv[0]);
+            exit(-1);
         } else {
             err_sys("fork failed");
         }
@@ -109,6 +120,6 @@ again:
 }
 
 void showSymbol(int sockfd) {
-//    char *symbol = "% ";
-//    Writen(sockfd, symbol, 2);
+    char *symbol = "% ";
+    Writen(sockfd, symbol, 2);
 }
