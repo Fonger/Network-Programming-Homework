@@ -9,7 +9,10 @@
 #include <stdio.h>
 #include "unp.h"
 
-int main(int argc, const char * argv[]) {
+void showSymbol(int sockfd);
+void receive_cmd(int sockfd);
+
+int main() {
     // insert code here...
     printf("Hello, World!\n");
     
@@ -32,15 +35,76 @@ int main(int argc, const char * argv[]) {
     for (;;) {
         clilen = sizeof(cliaddr);
         connfd = Accept(listenfd, (SA *) &cliaddr, &clilen);
-        
-        if ((childpid = Fork()) == 0) { // child process
-            Close(listenfd);            // close listening socket
-            str_echo(connfd);           // process the request
-            exit(0);
-        }
+
+        //Close(listenfd);            // close listening socket
+        receive_cmd(connfd);
         Close(connfd);                  // parent closes connected socket
+        Close(listenfd);
     }
     
 
     return 0;
+}
+
+
+void receive_cmd(int sockfd)
+{
+    ssize_t		n;
+    char		buf[MAXLINE];
+    setenv("PATH", "/bin:.", TRUE);
+again:
+    showSymbol(sockfd);
+
+    while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
+        pid_t pid = Fork();
+        if (pid > 0) { // parent
+            int status;
+            waitpid(pid, &status, 0);
+        } else if (pid == 0) { // child
+            Dup2(sockfd, STDOUT_FILENO);
+            Dup2(sockfd, STDERR_FILENO);
+            
+            Close(sockfd);
+            
+            buf[n] = '\0';
+            
+            char *delim = " \n";
+            
+            int argc = 0;
+            char *argv[255];
+            
+            char *p = strtok(buf, delim);
+            
+            
+            argv[argc++] = p;
+            while ((p = strtok(NULL, delim)) != NULL) {
+                argv[argc++] = p;
+            }
+
+            argv[argc] = NULL;
+            
+            printf("argc = %d\n", argc);
+            
+            for (int i = 0; i < argc; i++) {
+                printf("argv[%d] = %s\n", i, argv[i]);
+            }
+            
+            //char *const args[] = { "ls", "-al" };
+            execvp(argv[0], argv);
+            
+        } else {
+            err_sys("fork failed");
+        }
+
+    }
+    if (n < 0 && errno == EINTR) {
+        goto again;
+    }
+    else if (n < 0)
+        err_sys("str_echo: read error");
+}
+
+void showSymbol(int sockfd) {
+    //char *symbol = "% ";
+    //Writen(sockfd, symbol, 2);
 }

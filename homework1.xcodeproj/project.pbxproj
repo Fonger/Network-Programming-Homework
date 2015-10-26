@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C47566611BDD8D85004BC9AE /* str_echo.c in Sources */ = {isa = PBXBuildFile; fileRef = C475665D1BDD8D85004BC9AE /* str_echo.c */; };
 		C47566621BDD8D85004BC9AE /* wrapsock.c in Sources */ = {isa = PBXBuildFile; fileRef = C475665F1BDD8D85004BC9AE /* wrapsock.c */; };
 		C47566631BDD8D85004BC9AE /* wrapunix.c in Sources */ = {isa = PBXBuildFile; fileRef = C47566601BDD8D85004BC9AE /* wrapunix.c */; };
 		C47566651BDD8E33004BC9AE /* error.c in Sources */ = {isa = PBXBuildFile; fileRef = C47566641BDD8E33004BC9AE /* error.c */; };
@@ -28,7 +27,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		C475665D1BDD8D85004BC9AE /* str_echo.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = str_echo.c; sourceTree = "<group>"; };
 		C475665E1BDD8D85004BC9AE /* unp.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = unp.h; sourceTree = "<group>"; };
 		C475665F1BDD8D85004BC9AE /* wrapsock.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = wrapsock.c; sourceTree = "<group>"; };
 		C47566601BDD8D85004BC9AE /* wrapunix.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = wrapunix.c; sourceTree = "<group>"; };
@@ -52,7 +50,6 @@
 		C475665C1BDD8D3D004BC9AE /* lib */ = {
 			isa = PBXGroup;
 			children = (
-				C475665D1BDD8D85004BC9AE /* str_echo.c */,
 				C475665E1BDD8D85004BC9AE /* unp.h */,
 				C475665F1BDD8D85004BC9AE /* wrapsock.c */,
 				C47566601BDD8D85004BC9AE /* wrapunix.c */,
@@ -143,7 +140,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C47566611BDD8D85004BC9AE /* str_echo.c in Sources */,
 				C47566671BDD8E53004BC9AE /* written.c in Sources */,
 				C47566631BDD8D85004BC9AE /* wrapunix.c in Sources */,
 				C4B9CEF31BDD7CBB00938913 /* main.c in Sources */,
