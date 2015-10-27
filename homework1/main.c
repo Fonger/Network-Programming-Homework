@@ -8,7 +8,8 @@
 
 #include <stdio.h>
 #include "unp.h"
-#define MAXARGS 250
+#define MAX_LINE 15000
+#define MAX_ARGS 250
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
@@ -43,28 +44,28 @@ int main() {
     return 0;
 }
 
-
 void receive_cmd(int sockfd)
 {
     char welcome1[] = "****************************************\n";
     char welcome2[] = "** Welcome to the information server. **\n";
     
+
     Writen(sockfd, welcome1, sizeof(welcome1));
     Writen(sockfd, welcome2, sizeof(welcome2));
     Writen(sockfd, welcome1, sizeof(welcome1));
 
     showSymbol(sockfd);
-    ssize_t		n;
-    char		buf[MAXLINE];
-    char        *argv[MAXARGS];
+    ssize_t     n;
+    char        buf[MAX_LINE];
+    char        *argv[MAX_ARGS];
     char        *delim = " \n";
 
     setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
 
 again:
-    while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
+    while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
-
+        
         char *p = strtok(buf, delim);
         
         if ( p == NULL)
@@ -100,7 +101,7 @@ again:
             showSymbol(sockfd);
             continue;
         }
-        
+
         pid_t child_pid = Fork();
         if (child_pid > 0) { // parent
             printf("Child spawn with pid: %d\n", child_pid);
