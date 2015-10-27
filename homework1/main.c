@@ -8,11 +8,14 @@
 
 #include <stdio.h>
 #include "unp.h"
+
 #define MAX_LINE 15000
 #define MAX_ARGS 250
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
+int parse_argv(char input[], char *out_argv[]);
+
 
 int main() {
     printf("Hello, World!\n");
@@ -58,33 +61,25 @@ void receive_cmd(int sockfd)
     ssize_t     n;
     char        buf[MAX_LINE];
     char        *argv[MAX_ARGS];
-    char        *delim = " \n";
 
     setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
 
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
-        
-        char *p = strtok(buf, delim);
-        
-        if ( p == NULL)
+
+        int argc = parse_argv(buf, argv);
+
+        if (argc == 0) {
+            showSymbol(sockfd);
             continue;
-
-        if (strcmp(p, "exit") == 0)
-            return;
-        
-        int argc = 0;
-
-        argv[argc++] = p;
-        while ((p = strtok(NULL, delim)) != NULL) {
-            argv[argc++] = p;
         }
-        
-        argv[argc] = NULL;
         
         for (int i = 0; i < argc; i++)
             printf("argv[%d] = %s\n", i, argv[i]);
+        
+        if (strcmp(argv[0], "exit") == 0)
+            return;
 
         if (strcmp(argv[0], "printenv") == 0) {
             for (int i = 1; i < argc; i++)
@@ -139,4 +134,21 @@ again:
 void showSymbol(int sockfd) {
     char *symbol = "% ";
     Writen(sockfd, symbol, 2);
+}
+
+int parse_argv(char input[], char *argv[]) {
+    char *delim = " \n";
+    
+    char *p = strtok(input, delim);
+    
+    if (p == NULL)
+        return 0;
+    
+    int  argc = 0;
+    argv[argc++] = p;
+    while ((p = strtok(NULL, delim)) != NULL) {
+        argv[argc++] = p;
+    }
+    argv[argc] = NULL;
+    return argc;
 }
