@@ -14,12 +14,13 @@
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
+int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
 
 
 int main() {
     printf("Hello, World!\n");
-    
+
     int listenfd, connfd;
 
     socklen_t clilen;
@@ -135,6 +136,27 @@ void showSymbol(int sockfd) {
     char *symbol = "% ";
     Writen(sockfd, symbol, 2);
 }
+int parse_cmd(char *input, char *cmd[]) {
+    char    *symbol = " | ";
+    size_t  length   = strlen(input);
+    size_t  offset   = strlen(symbol);
+    
+    if (input[length - 1] == '\n')
+        input[length - 1] = '\0';
+    
+    if (strlen(input) == 0)
+        return 0;
+    
+    int i = 0;
+    cmd[0] = input;
+
+    for (i = 1; (input = strstr(input, symbol)) != NULL; i++) {
+        *(input) = '\0';
+        input += offset;
+        cmd[i] = input;
+    }
+    return i;
+}
 
 int parse_argv(char input[], char *argv[]) {
     char *delim = " \n";
@@ -146,9 +168,8 @@ int parse_argv(char input[], char *argv[]) {
     
     int  argc = 0;
     argv[argc++] = p;
-    while ((p = strtok(NULL, delim)) != NULL) {
+    while ((p = strtok(NULL, delim)) != NULL)
         argv[argc++] = p;
-    }
-    argv[argc] = NULL;
+    argv[argc] = '\0';
     return argc;
 }
