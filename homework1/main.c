@@ -10,7 +10,8 @@
 #include "unp.h"
 
 #define MAX_LINE 15000
-#define MAX_ARGS 250
+#define MAX_CMDS 2500
+#define MAX_ARGS 10
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
@@ -61,68 +62,71 @@ void receive_cmd(int sockfd)
     showSymbol(sockfd);
     ssize_t     n;
     char        buf[MAX_LINE];
-    char        *argv[MAX_ARGS];
+    char        *cmdv[MAX_CMDS];
 
     setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
 
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
-
-        int argc = parse_argv(buf, argv);
-
-        if (argc == 0) {
-            showSymbol(sockfd);
-            continue;
-        }
         
-        for (int i = 0; i < argc; i++)
-            printf("argv[%d] = %s\n", i, argv[i]);
-        
-        if (strcmp(argv[0], "exit") == 0)
-            return;
+        int cmdc = parse_cmd(buf, cmdv);
+        for (int i = 0; i < cmdc; i++) {
+            printf("cmdv[%d] = %s\n", i, cmdv[i]);
 
-        if (strcmp(argv[0], "printenv") == 0) {
-            for (int i = 1; i < argc; i++)
-                dprintf(sockfd, "%s=%s\n", argv[i], getenv(argv[i]));
-            showSymbol(sockfd);
-            continue;
-        }
+            char *argv[MAX_ARGS];
 
-        if (strcmp(argv[0], "setenv") == 0) {
-            if (argc == 3)
-                setenv(argv[1], argv[2], TRUE);
-            else
-                dprintf(sockfd, "usage: setenv KEY VALIE\n");
-            showSymbol(sockfd);
-            continue;
-        }
-
-        pid_t child_pid = Fork();
-        if (child_pid > 0) { // parent
-            printf("Child spawn with pid: %d\n", child_pid);
-
-            int status = 0;
-            while( (wait( &status ) == -1) && (errno == EINTR) );
-
-            if (WIFEXITED(status)) {
-                char exit_code = WEXITSTATUS(status);
-                printf("Child exit with code: %d\n", exit_code);
-                showSymbol(sockfd);
-            }
-
-        } else if (child_pid == 0) { // child
-            Dup2(sockfd, STDOUT_FILENO);
-            Dup2(sockfd, STDERR_FILENO);
-            Close(sockfd);
-
-            execvp(argv[0], argv);
+            int argc = parse_argv(cmdv[i], argv);
             
-            printf("Unknown Command: [%s]\n", argv[0]);
-            exit(-1);
-        } else {
-            err_sys("fork failed");
+            if (argc == 0)
+                continue;
+            
+            for (int j = 0; j < argc; j++)
+                printf("argv[%d] = %s\n", j, argv[j]);
+            
+            if (strcmp(argv[0], "exit") == 0)
+                return;
+            
+            if (strcmp(argv[0], "printenv") == 0) {
+                for (int j = 1; j < argc; j++)
+                    dprintf(sockfd, "%s=%s\n", argv[j], getenv(argv[j]));
+                break;
+            }
+            
+            if (strcmp(argv[0], "setenv") == 0) {
+                if (argc == 3)
+                    setenv(argv[1], argv[2], TRUE);
+                else
+                    dprintf(sockfd, "usage: setenv KEY VALIE\n");
+                break;
+            }
+            
+            pid_t child_pid = Fork();
+            if (child_pid > 0) { // parent
+                printf("Child spawn with pid: %d\n", child_pid);
+                
+                int status = 0;
+                while( (wait( &status ) == -1) && (errno == EINTR) );
+                
+                if (WIFEXITED(status)) {
+                    char exit_code = WEXITSTATUS(status);
+                    printf("Child exit with code: %d\n", exit_code);
+                }
+                
+            } else if (child_pid == 0) { // child
+                Dup2(sockfd, STDOUT_FILENO);
+                Dup2(sockfd, STDERR_FILENO);
+                Close(sockfd);
+                
+                execvp(argv[0], argv);
+                
+                printf("Unknown Command: [%s]\n", argv[0]);
+                exit(-1);
+            } else {
+                err_sys("fork failed");
+            }
         }
+        showSymbol(sockfd);
     }
     if (n < 0 && errno == EINTR) {
         goto again;
@@ -136,16 +140,21 @@ void showSymbol(int sockfd) {
     char *symbol = "% ";
     Writen(sockfd, symbol, 2);
 }
+
 int parse_cmd(char *input, char *cmd[]) {
     char    *symbol = " | ";
     size_t  length   = strlen(input);
     size_t  offset   = strlen(symbol);
     
-    if (input[length - 1] == '\n')
-        input[length - 1] = '\0';
-    
-    if (strlen(input) == 0)
+    if (length == 0)
         return 0;
+    
+    if (input[length - 1] == '\n') {
+        if (--length == 0) // if only input \n
+            return 0;
+        input[length] = '\0';
+    }
+    
     
     int i = 0;
     cmd[0] = input;
