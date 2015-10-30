@@ -17,7 +17,7 @@ void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
-
+int fork_process(char *argv[], int toMaster[2]);
 
 int main() {
     printf("Hello, World!\n");
@@ -69,8 +69,10 @@ void receive_cmd(int sockfd)
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
+
         
         int cmdc = parse_cmd(buf, cmdv);
+        int toChild[2] = { -1, -1 };
         for (int i = 0; i < cmdc; i++) {
             printf("cmdv[%d] = %s\n", i, cmdv[i]);
 
@@ -100,32 +102,26 @@ again:
                     dprintf(sockfd, "usage: setenv KEY VALIE\n");
                 break;
             }
-            
-            pid_t child_pid = Fork();
-            if (child_pid > 0) { // parent
-                printf("Child spawn with pid: %d\n", child_pid);
-                
-                int status = 0;
-                while( (wait( &status ) == -1) && (errno == EINTR) );
-                
-                if (WIFEXITED(status)) {
-                    char exit_code = WEXITSTATUS(status);
-                    printf("Child exit with code: %d\n", exit_code);
+
+            int result_fd = fork_process(argv, toChild);
+
+            Pipe(toChild);
+            ssize_t z;
+            char result[1000];
+        agz:
+            while ( (z = read(result_fd, result, sizeof(z)) ) > 0) {
+                if (i != cmdc - 1) {
+                    Writen(toChild[1], result, z);
+                } else {
+                    Writen(sockfd, result, z);
                 }
-                
-            } else if (child_pid == 0) { // child
-                Dup2(sockfd, STDOUT_FILENO);
-                Dup2(sockfd, STDERR_FILENO);
-                Close(sockfd);
-                
-                execvp(argv[0], argv);
-                
-                printf("Unknown Command: [%s]\n", argv[0]);
-                exit(-1);
-            } else {
-                err_sys("fork failed");
             }
+            if (z < 0 && errno == EINTR)
+                goto agz;
+            Close(toChild[1]);
+            Close(result_fd);
         }
+
         showSymbol(sockfd);
     }
     if (n < 0 && errno == EINTR) {
@@ -136,9 +132,43 @@ again:
     }
 }
 
+
+int fork_process(char *argv[], int toChild[2]) {
+    int toMaster[2];
+    Pipe(toMaster);
+    
+    pid_t child_pid = Fork();
+    if (child_pid > 0) { // parent
+        if (toChild[0] != -1)
+            Close(toChild[0]);
+        Close(toMaster[1]);
+        printf("Child spawn with pid: %d\n", child_pid);
+        
+        int status = 0;
+        while( (wait( &status ) == -1) && (errno == EINTR) );
+
+        printf("QQ %d \n", toChild[1]);
+        return toMaster[0];
+    } else if (child_pid == 0) { // child
+        if (toChild[0] != -1) {
+            Dup2(toChild[0], STDIN_FILENO);
+            Close(toChild[0]);
+        }
+        Dup2(toMaster[1], STDOUT_FILENO);
+        Close(toMaster[1]);
+        
+        execvp(argv[0], argv);
+        
+        printf("Unknown Command: [%s]\n", argv[0]);
+        exit(-1);
+    } else {
+        err_sys("fork failed");
+    }
+    return -1;
+}
 void showSymbol(int sockfd) {
-    char *symbol = "% ";
-    Writen(sockfd, symbol, 2);
+    char *symbol = "\n% ";
+    Writen(sockfd, symbol, 3);
 }
 
 int parse_cmd(char *input, char *cmd[]) {
