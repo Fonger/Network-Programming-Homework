@@ -119,6 +119,8 @@ again:
             if (z < 0 && errno == EINTR)
                 goto agz;
             Close(toChild[1]);
+            if (i == cmdc - 1)
+                Close(toChild[0]);
             Close(result_fd);
         }
 
@@ -141,6 +143,7 @@ int fork_process(char *argv[], int toChild[2]) {
     if (child_pid > 0) { // parent
         if (toChild[0] != -1)
             Close(toChild[0]);
+
         Close(toMaster[1]);
         printf("Child spawn with pid: %d\n", child_pid);
         
@@ -154,6 +157,7 @@ int fork_process(char *argv[], int toChild[2]) {
             Dup2(toChild[0], STDIN_FILENO);
             Close(toChild[0]);
         }
+        Close(toMaster[0]);
         Dup2(toMaster[1], STDOUT_FILENO);
         Close(toMaster[1]);
         
