@@ -17,7 +17,7 @@ void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
-void fork_process(char *argv[], int fd_in, int fd_out, int sockfd);
+void fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
 
 int main() {
     printf("Hello, World!\n");
@@ -80,7 +80,7 @@ again:
         
         int cmdc = parse_cmd(buf, cmdv);
         int fd_in = pipes[line][0];
-        int fd_out;
+
         for (int i = 0; i < cmdc; i++) {
             printf("cmdv[%d] = %s\n", i, cmdv[i]);
 
@@ -111,15 +111,18 @@ again:
                 break;
             }
             
-            
+            int fd_out;
+            int fd_errout;
             int in_out_pipe[2];
 
             if (i + 1 < cmdc) {
                 // If there's next command
                 Pipe(in_out_pipe);
                 fd_out = in_out_pipe[1];
+                fd_errout = in_out_pipe[1];
             } else { // This is last one
                 fd_out = sockfd;
+                fd_errout = sockfd;
 
                 for (int q = 0; q < argc; q++) {
                     if (strcmp(argv[q], ">") == 0) {
@@ -130,16 +133,24 @@ again:
                     } else if (argv[q][0] == '|') {
                         
                         int dest_pipe = atoi(&argv[q][1]) + line;
-                        printf("dest_pipe= %d\n", dest_pipe);
+                        printf("dest_pipe std = %d\n", dest_pipe);
 
                         if (pipes[dest_pipe][1] == -1)
                             Pipe(pipes[dest_pipe]);
-                        fd_out = pipes[dest_pipe][1];
+                        fd_errout = pipes[dest_pipe][1];
 
                         argv[q] = '\0';
                         if (q < argc)
                             argc = q;
                     } else if (argv[q][0] == '!') {
+
+                        int dest_pipe = atoi(&argv[q][1]) + line;
+                        printf("dest_pipe err = %d\n", dest_pipe);
+                        
+                        if (pipes[dest_pipe][1] == -1)
+                            Pipe(pipes[dest_pipe]);
+                        fd_errout = pipes[dest_pipe][1];
+
                         argv[q] = '\0';
                         if (q < argc)
                             argc = q;
@@ -150,7 +161,7 @@ again:
             printf("pipe[0]=%d\n", in_out_pipe[0]);
             printf("pipe[1]=%d\n", in_out_pipe[1]);
 
-            fork_process(argv, fd_in, fd_out, sockfd);
+            fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
 
             fd_in = in_out_pipe[0];
             
@@ -168,13 +179,16 @@ again:
 }
 
 
-void fork_process(char *argv[], int fd_in, int fd_out, int sockfd) {
+void fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd) {
 
     pid_t child_pid = Fork();
     if (child_pid > 0) { // parent
 
         if (fd_out != sockfd)
             Close(fd_out);
+
+        if (fd_errout != fd_out && fd_errout != sockfd)
+            Close(fd_errout);
 
         if (fd_in != -1)
             Close(fd_in);
@@ -194,7 +208,12 @@ void fork_process(char *argv[], int fd_in, int fd_out, int sockfd) {
         }
 
         Dup2(fd_out, STDOUT_FILENO);
+        Dup2(fd_errout, STDERR_FILENO);
+        
         Close(fd_out);
+
+        if (fd_out != fd_errout)
+            Close(fd_errout);
         
         execvp(argv[0], argv);
         
