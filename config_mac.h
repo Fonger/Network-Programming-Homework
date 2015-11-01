@@ -2,7 +2,7 @@
 /* config.h.in.  Generated from configure.in by autoheader.  */
 
 /* CPU, vendor, and operating system */
-#define CPU_VENDOR_OS "amd64-unknown-freebsd10.2"
+#define CPU_VENDOR_OS "i386-apple-darwin14.5.0"
 
 /* Define to 1 if <netdb.h> defines struct addrinfo */
 #define HAVE_ADDRINFO_STRUCT 1
@@ -38,7 +38,7 @@
 #define HAVE_GETHOSTBYNAME2 1
 
 /* Define to 1 if you have the `gethostbyname_r' function. */
-#define HAVE_GETHOSTBYNAME_R 1
+/* #undef HAVE_GETHOSTBYNAME_R */
 
 /* Define to 1 if you have the `gethostname' function. */
 #define HAVE_GETHOSTNAME 1
@@ -101,7 +101,7 @@
 /* #undef HAVE_LIBPTHREADS */
 
 /* Define to 1 if you have the `resolv' library (-lresolv). */
-/* #undef HAVE_LIBRESOLV */
+#define HAVE_LIBRESOLV 1
 
 /* Define to 1 if you have the `xti' library (-lxti). */
 /* #undef HAVE_LIBXTI */
@@ -113,7 +113,7 @@
 #define HAVE_MSGHDR_MSG_CONTROL 1
 
 /* Define to 1 if you have the <netconfig.h> header file. */
-#define HAVE_NETCONFIG_H 1
+/* #undef HAVE_NETCONFIG_H */
 
 /* Define to 1 if you have the <netdb.h> header file. */
 #define HAVE_NETDB_H 1

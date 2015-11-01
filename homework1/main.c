@@ -73,7 +73,7 @@ void receive_cmd(int sockfd)
     
     memset(pipes, -1, sizeof(pipes));
 
-    setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
+    setenv("PATH", "bin:.", TRUE);
 
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
