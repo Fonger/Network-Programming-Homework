@@ -137,7 +137,7 @@ again:
 
                         if (pipes[dest_pipe][1] == -1)
                             Pipe(pipes[dest_pipe]);
-                        fd_errout = pipes[dest_pipe][1];
+                        fd_out = pipes[dest_pipe][1];
 
                         argv[q] = '\0';
                         if (q < argc)
