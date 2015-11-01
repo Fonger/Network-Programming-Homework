@@ -7,7 +7,7 @@
 //
 
 #include <stdio.h>
-#include "unp.h"
+#include "../lib/unp.h"
 
 #define MAX_LINE 15000
 #define MAX_CMDS 2500
@@ -115,13 +115,17 @@ again:
             int fd_out;
             int fd_errout;
             int in_out_pipe[2];
+            
+            int close_fd_out = TRUE;
+            int close_fd_errout = TRUE;
 
             if (i + 1 < cmdc) {
                 // If there's next command
                 Pipe(in_out_pipe);
                 fd_out = in_out_pipe[1];
                 fd_errout = in_out_pipe[1];
-            } else { // This is last one
+            } else {
+                // This is last one
                 fd_out = sockfd;
                 fd_errout = sockfd;
 
@@ -139,7 +143,10 @@ again:
                         if (pipes[dest_pipe][1] == -1)
                             Pipe(pipes[dest_pipe]);
                         fd_out = pipes[dest_pipe][1];
-
+                        
+                        if (dest_pipe > line)
+                            close_fd_out = FALSE;
+                        
                         argv[q] = '\0';
                         if (q < argc)
                             argc = q;
@@ -152,6 +159,9 @@ again:
                             Pipe(pipes[dest_pipe]);
                         fd_errout = pipes[dest_pipe][1];
 
+                        if (dest_pipe > line)
+                            close_fd_errout = FALSE;
+
                         argv[q] = '\0';
                         if (q < argc)
                             argc = q;
@@ -163,6 +173,13 @@ again:
             printf("pipe[1]=%d\n", in_out_pipe[1]);
 
             char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
+            
+            if (close_fd_out && fd_out != sockfd)
+                Close(fd_out);
+            
+            if (close_fd_errout && fd_errout != fd_out && fd_errout != sockfd)
+                Close(fd_errout);
+            
             
             if (exit_code == ERR_CMD_NOT_FOUND) {
                 dprintf(sockfd, "Unknown Command: [%s]\n", argv[0]);
@@ -191,16 +208,10 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
     pid_t child_pid = Fork();
     if (child_pid > 0) { // parent
 
-        if (fd_out != sockfd)
-            Close(fd_out);
-
-        if (fd_errout != fd_out && fd_errout != sockfd)
-            Close(fd_errout);
-
+        printf("Child spawn with pid: %d\n", child_pid);
+        
         if (fd_in != -1)
             Close(fd_in);
-
-        printf("Child spawn with pid: %d\n", child_pid);
         
         int status = 0;
         while( (wait( &status ) == -1) && (errno == EINTR) );
