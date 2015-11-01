@@ -17,7 +17,7 @@ void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
-int fork_process(char *argv[], int toMaster[2]);
+void fork_process(char *argv[], int fd_in, int fd_out, int sockfd);
 
 int main() {
     printf("Hello, World!\n");
@@ -49,6 +49,10 @@ int main() {
     return 0;
 }
 
+struct process {
+    
+};
+
 void receive_cmd(int sockfd)
 {
     char welcome1[] = "****************************************\n";
@@ -66,13 +70,14 @@ void receive_cmd(int sockfd)
 
     setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
 
+    
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
-
         
         int cmdc = parse_cmd(buf, cmdv);
-        int toChild[2] = { -1, -1 };
+        int fd_in = -1;
+        int fd_out;
         for (int i = 0; i < cmdc; i++) {
             printf("cmdv[%d] = %s\n", i, cmdv[i]);
 
@@ -103,25 +108,23 @@ again:
                 break;
             }
 
-            int result_fd = fork_process(argv, toChild);
+            int in_out_pipe[2];
 
-            Pipe(toChild);
-            ssize_t z;
-            char result[1000];
-        agz:
-            while ( (z = read(result_fd, result, sizeof(z)) ) > 0) {
-                if (i != cmdc - 1) {
-                    Writen(toChild[1], result, z);
-                } else {
-                    Writen(sockfd, result, z);
-                }
+            if (i + 1 < cmdc) {
+                // If there's next command
+                Pipe(in_out_pipe);
+                fd_out = in_out_pipe[1];
+            } else { // This is last one
+                fd_out = sockfd;
             }
-            if (z < 0 && errno == EINTR)
-                goto agz;
-            Close(toChild[1]);
-            if (i == cmdc - 1)
-                Close(toChild[0]);
-            Close(result_fd);
+            
+            printf("pipe[0]=%d\n", in_out_pipe[0]);
+            printf("pipe[1]=%d\n", in_out_pipe[1]);
+
+            fork_process(argv, fd_in, fd_out, sockfd);
+
+            fd_in = in_out_pipe[0];
+            
         }
 
         showSymbol(sockfd);
@@ -135,31 +138,33 @@ again:
 }
 
 
-int fork_process(char *argv[], int toChild[2]) {
-    int toMaster[2];
-    Pipe(toMaster);
-    
+void fork_process(char *argv[], int fd_in, int fd_out, int sockfd) {
+
     pid_t child_pid = Fork();
     if (child_pid > 0) { // parent
-        if (toChild[0] != -1)
-            Close(toChild[0]);
 
-        Close(toMaster[1]);
+        if (fd_out != sockfd)
+            Close(fd_out);
+
+        if (fd_in != -1)
+            Close(fd_in);
+
         printf("Child spawn with pid: %d\n", child_pid);
         
         int status = 0;
         while( (wait( &status ) == -1) && (errno == EINTR) );
 
-        printf("QQ %d \n", toChild[1]);
-        return toMaster[0];
+        printf("QQ %d \n", fd_out);
+        
+
     } else if (child_pid == 0) { // child
-        if (toChild[0] != -1) {
-            Dup2(toChild[0], STDIN_FILENO);
-            Close(toChild[0]);
+        if (fd_in != -1) {
+            Dup2(fd_in, STDIN_FILENO);
+            Close(fd_in);
         }
-        Close(toMaster[0]);
-        Dup2(toMaster[1], STDOUT_FILENO);
-        Close(toMaster[1]);
+
+        Dup2(fd_out, STDOUT_FILENO);
+        Close(fd_out);
         
         execvp(argv[0], argv);
         
@@ -168,7 +173,6 @@ int fork_process(char *argv[], int toChild[2]) {
     } else {
         err_sys("fork failed");
     }
-    return -1;
 }
 void showSymbol(int sockfd) {
     char *symbol = "\n% ";
