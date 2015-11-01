@@ -69,16 +69,17 @@ void receive_cmd(int sockfd)
     char        *cmdv[MAX_CMDS];
     int         pipes[MAX_LINE][2];
     int         line = 0;
+    
+    memset(pipes, -1, sizeof(pipes));
 
     setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
-    
 
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
         
         int cmdc = parse_cmd(buf, cmdv);
-        int fd_in = -1;
+        int fd_in = pipes[line][0];
         int fd_out;
         for (int i = 0; i < cmdc; i++) {
             printf("cmdv[%d] = %s\n", i, cmdv[i]);
@@ -126,6 +127,22 @@ again:
                         argv[q] = '\0';
                         argc = q;
                         break;
+                    } else if (argv[q][0] == '|') {
+                        
+                        int dest_pipe = atoi(&argv[q][1]) + line;
+                        printf("dest_pipe= %d\n", dest_pipe);
+
+                        if (pipes[dest_pipe][1] == -1)
+                            Pipe(pipes[dest_pipe]);
+                        fd_out = pipes[dest_pipe][1];
+
+                        argv[q] = '\0';
+                        if (q < argc)
+                            argc = q;
+                    } else if (argv[q][0] == '!') {
+                        argv[q] = '\0';
+                        if (q < argc)
+                            argc = q;
                     }
                 }
             }
