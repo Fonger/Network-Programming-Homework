@@ -12,12 +12,13 @@
 #define MAX_LINE 15000
 #define MAX_CMDS 2500
 #define MAX_ARGS 10
+#define ERR_CMD_NOT_FOUND -5
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
-void fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
+char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
 
 int main() {
     printf("Hello, World!\n");
@@ -161,7 +162,13 @@ again:
             printf("pipe[0]=%d\n", in_out_pipe[0]);
             printf("pipe[1]=%d\n", in_out_pipe[1]);
 
-            fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
+            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
+            
+            if (exit_code == ERR_CMD_NOT_FOUND) {
+                dprintf(sockfd, "Unknown Command: [%s]\n", argv[0]);
+                line--;
+                break;
+            }
 
             fd_in = in_out_pipe[0];
             
@@ -179,7 +186,7 @@ again:
 }
 
 
-void fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd) {
+char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd) {
 
     pid_t child_pid = Fork();
     if (child_pid > 0) { // parent
@@ -197,10 +204,16 @@ void fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
         
         int status = 0;
         while( (wait( &status ) == -1) && (errno == EINTR) );
-
-        printf("QQ %d \n", fd_out);
         
-
+        if (WIFEXITED(status)) {
+            char exit_code = WEXITSTATUS(status);
+            printf("Child pid (%d) exit code: %d\n", child_pid, exit_code);
+            return exit_code;
+        } else {
+            printf("Child pid (%d) crash status: %x\n", child_pid, status);
+            return 0;
+        }
+        
     } else if (child_pid == 0) { // child
         if (fd_in != -1) {
             Dup2(fd_in, STDIN_FILENO);
@@ -217,11 +230,11 @@ void fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
         
         execvp(argv[0], argv);
         
-        printf("Unknown Command: [%s]\n", argv[0]);
-        exit(-1);
+        exit(ERR_CMD_NOT_FOUND);
     } else {
         err_sys("fork failed");
     }
+    return 0;
 }
 void showSymbol(int sockfd) {
     char *symbol = "\n% ";
