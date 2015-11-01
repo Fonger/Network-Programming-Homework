@@ -67,10 +67,12 @@ void receive_cmd(int sockfd)
     ssize_t     n;
     char        buf[MAX_LINE];
     char        *cmdv[MAX_CMDS];
+    int         pipes[MAX_LINE][2];
+    int         line = 0;
 
     setenv("PATH", "/Users/Fonger/ras/bin:/bin:.", TRUE);
-
     
+
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
@@ -107,7 +109,8 @@ again:
                     dprintf(sockfd, "usage: setenv KEY VALIE\n");
                 break;
             }
-
+            
+            
             int in_out_pipe[2];
 
             if (i + 1 < cmdc) {
@@ -116,6 +119,15 @@ again:
                 fd_out = in_out_pipe[1];
             } else { // This is last one
                 fd_out = sockfd;
+
+                for (int q = 0; q < argc; q++) {
+                    if (strcmp(argv[q], ">") == 0) {
+                        fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                        argv[q] = '\0';
+                        argc = q;
+                        break;
+                    }
+                }
             }
             
             printf("pipe[0]=%d\n", in_out_pipe[0]);
@@ -128,6 +140,7 @@ again:
         }
 
         showSymbol(sockfd);
+        line++;
     }
     if (n < 0 && errno == EINTR) {
         goto again;
