@@ -144,7 +144,7 @@ again:
                             Pipe(pipes[dest_pipe]);
                         fd_out = pipes[dest_pipe][1];
                         
-                        if (dest_pipe > line)
+                        if (dest_pipe > line + 1)
                             close_fd_out = FALSE;
                         
                         argv[q] = '\0';
@@ -159,7 +159,7 @@ again:
                             Pipe(pipes[dest_pipe]);
                         fd_errout = pipes[dest_pipe][1];
 
-                        if (dest_pipe > line)
+                        if (dest_pipe > line + 1)
                             close_fd_errout = FALSE;
 
                         argv[q] = '\0';
