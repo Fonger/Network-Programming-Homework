@@ -248,7 +248,7 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
     return 0;
 }
 void showSymbol(int sockfd) {
-    char *symbol = "\n% ";
+    char *symbol = "% ";
     Writen(sockfd, symbol, 3);
 }
 
