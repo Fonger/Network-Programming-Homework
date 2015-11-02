@@ -13,9 +13,12 @@
 #define MAX_CMDS 2500
 #define MAX_ARGS 10
 #define ERR_CMD_NOT_FOUND -5
+#define TRUE 1
+#define FALSE 0
 
 void showSymbol(int sockfd);
 void receive_cmd(int sockfd);
+int parse_line(char *input, char* linv[]);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
 char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
@@ -56,143 +59,150 @@ struct process {
 
 void receive_cmd(int sockfd)
 {
-    char welcome1[] = "****************************************\n";
-    char welcome2[] = "** Welcome to the information server. **\n";
-    
+    char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
-    Writen(sockfd, welcome1, sizeof(welcome1));
-    Writen(sockfd, welcome2, sizeof(welcome2));
-    Writen(sockfd, welcome1, sizeof(welcome1));
+    Writen(sockfd, welcome, sizeof(welcome));
 
-    showSymbol(sockfd);
     ssize_t     n;
     char        buf[MAX_LINE];
-    char        *cmdv[MAX_CMDS];
     int         pipes[MAX_LINE][2];
     int         line = 0;
     
     memset(pipes, -1, sizeof(pipes));
 
-    setenv("PATH", "bin:.", TRUE);
+    setenv("PATH", "/Users/Fonger/ras/bin:bin:.", TRUE);
+    printf("%s\n" ,getenv("PATH"));
 
 again:
     while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
         
-        int cmdc = parse_cmd(buf, cmdv);
-        int fd_in = pipes[line][0];
+        char *linv[MAX_CMDS];
+        int linc = parse_line(buf, linv);
+        for (int z = 0; z < linc; z++) {
+            char *cmdv[MAX_CMDS];
+            int cmdc = parse_cmd(linv[z], cmdv);
+            int fd_in = pipes[line][0];
 
-        for (int i = 0; i < cmdc; i++) {
-            printf("cmdv[%d] = %s\n", i, cmdv[i]);
+            for (int i = 0; i < cmdc; i++) {
+                
+                printf("cmdv[%d] = %s\n", i, cmdv[i], strlen(cmdv[i]));
 
-            char *argv[MAX_ARGS];
+                char *argv[MAX_ARGS];
 
-            int argc = parse_argv(cmdv[i], argv);
-            
-            if (argc == 0)
-                continue;
-            
-            for (int j = 0; j < argc; j++)
-                printf("argv[%d] = %s\n", j, argv[j]);
-            
-            if (strcmp(argv[0], "exit") == 0)
-                return;
-            
-            if (strcmp(argv[0], "printenv") == 0) {
-                for (int j = 1; j < argc; j++)
-                    dprintf(sockfd, "%s=%s\n", argv[j], getenv(argv[j]));
-                break;
-            }
-            
-            if (strcmp(argv[0], "setenv") == 0) {
-                if (argc == 3)
-                    setenv(argv[1], argv[2], TRUE);
-                else
-                    dprintf(sockfd, "usage: setenv KEY VALIE\n");
-                break;
-            }
-            
-            int fd_out;
-            int fd_errout;
-            int in_out_pipe[2];
-            
-            int close_fd_out = TRUE;
-            int close_fd_errout = TRUE;
+                int argc = parse_argv(cmdv[i], argv);
+                
+                if (argc == 0)
+                    continue;
+                
+                for (int j = 0; j < argc; j++)
+                    printf("argv[%d] = %s\n", j, argv[j]);
+                
+                if (strcmp(argv[0], "exit") == 0)
+                    return;
+                
+                if (strcmp(argv[0], "printenv") == 0) {
+                    for (int j = 1; j < argc; j++)
+                        dprintf(sockfd, "%s=%s\n", argv[j], getenv(argv[j]));
+                    break;
+                }
+                
+                if (strcmp(argv[0], "setenv") == 0) {
+                    if (argc == 3)
+                        setenv(argv[1], argv[2], TRUE);
+                    else
+                        dprintf(sockfd, "usage: setenv KEY VALIE\n");
+                    break;
+                }
+                
+                int fd_out;
+                int fd_errout;
+                int in_out_pipe[2];
+                
+                int close_fd_out = TRUE;
+                int close_fd_errout = TRUE;
 
-            if (i + 1 < cmdc) {
-                // If there's next command
-                Pipe(in_out_pipe);
-                fd_out = in_out_pipe[1];
-                fd_errout = in_out_pipe[1];
-            } else {
-                // This is last one
-                fd_out = sockfd;
-                fd_errout = sockfd;
+                if (i + 1 < cmdc) {
+                    // If there's next command
+                    Pipe(in_out_pipe);
+                    fd_out = in_out_pipe[1];
+                    fd_errout = in_out_pipe[1];
+                } else {
+                    // This is last one
+                    fd_out = sockfd;
+                    fd_errout = sockfd;
 
-                for (int q = 0; q < argc; q++) {
-                    if (strcmp(argv[q], ">") == 0) {
-                        fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                        argv[q] = '\0';
-                        argc = q;
-                        break;
-                    } else if (argv[q][0] == '|') {
-                        
-                        int dest_pipe = atoi(&argv[q][1]) + line;
-                        printf("dest_pipe std = %d\n", dest_pipe);
-
-                        if (pipes[dest_pipe][1] == -1)
-                            Pipe(pipes[dest_pipe]);
-                        fd_out = pipes[dest_pipe][1];
-                        
-                        if (dest_pipe > line + 1)
-                            close_fd_out = FALSE;
-                        
-                        argv[q] = '\0';
-                        if (q < argc)
+                    for (int q = 0; q < argc; q++) {
+                        if (strcmp(argv[q], ">") == 0) {
+                            fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                            argv[q] = '\0';
                             argc = q;
-                    } else if (argv[q][0] == '!') {
+                            break;
+                        } else if (argv[q][0] == '|') {
+                            
+                            int dest_pipe = atoi(&argv[q][1]) + line;
+                            printf("dest_pipe std = %d\n", dest_pipe);
+                            if (pipes[dest_pipe][1] == -1)
+                                Pipe(pipes[dest_pipe]);
+                            fd_out = pipes[dest_pipe][1];
 
-                        int dest_pipe = atoi(&argv[q][1]) + line;
-                        printf("dest_pipe err = %d\n", dest_pipe);
-                        
-                        if (pipes[dest_pipe][1] == -1)
-                            Pipe(pipes[dest_pipe]);
-                        fd_errout = pipes[dest_pipe][1];
+                            if (dest_pipe > line + 1)
+                                close_fd_out = FALSE;
+                            
+                            argv[q] = '\0';
+                            if (q < argc)
+                                argc = q;
+                        } else if (argv[q][0] == '!') {
 
-                        if (dest_pipe > line + 1)
-                            close_fd_errout = FALSE;
+                            int dest_pipe = atoi(&argv[q][1]) + line;
+                            printf("dest_pipe err = %d\n", dest_pipe);
+                            
+                            if (pipes[dest_pipe][1] == -1)
+                                Pipe(pipes[dest_pipe]);
+                            fd_errout = pipes[dest_pipe][1];
 
-                        argv[q] = '\0';
-                        if (q < argc)
-                            argc = q;
+                            if (dest_pipe > line + 1)
+                                close_fd_errout = FALSE;
+
+                            argv[q] = '\0';
+                            if (q < argc)
+                                argc = q;
+                        }
                     }
                 }
-            }
-            
-            printf("pipe[0]=%d\n", in_out_pipe[0]);
-            printf("pipe[1]=%d\n", in_out_pipe[1]);
+                
+                printf("pipe[0]=%d\n", in_out_pipe[0]);
+                printf("pipe[1]=%d\n", in_out_pipe[1]);
+                
+                char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
+                
+                if (close_fd_out && fd_out != sockfd)
+                    Close(fd_out);
+                if (close_fd_errout && fd_errout != fd_out && fd_errout != sockfd)
+                    Close(fd_errout);
 
-            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
-            
-            if (close_fd_out && fd_out != sockfd)
-                Close(fd_out);
-            
-            if (close_fd_errout && fd_errout != fd_out && fd_errout != sockfd)
-                Close(fd_errout);
-            
-            
-            if (exit_code == ERR_CMD_NOT_FOUND) {
-                dprintf(sockfd, "Unknown Command: [%s]\n", argv[0]);
-                line--;
-                break;
+                if (exit_code == ERR_CMD_NOT_FOUND) {
+                    dprintf(sockfd, "Unknown Command: [%s]\n", argv[0]);
+                    if (pipes[line][1] != -1) {
+                        Close(pipes[line][1]);
+                        pipes[line][1] = -1;
+                    }
+                    if (pipes[line][0] != -1) {
+                        Close(pipes[line][1]);
+                        pipes[line][0] = -1;
+                    }
+
+                    line--;
+                    break;
+                } else {
+                    fd_in = in_out_pipe[0];
+                }
+                
             }
 
-            fd_in = in_out_pipe[0];
-            
+            showSymbol(sockfd);
+            line++;
         }
-
-        showSymbol(sockfd);
-        line++;
     }
     if (n < 0 && errno == EINTR) {
         goto again;
@@ -248,10 +258,23 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
     return 0;
 }
 void showSymbol(int sockfd) {
-    char *symbol = "% ";
-    Writen(sockfd, symbol, 3);
+    Writen(sockfd, "% ", 2);
 }
-
+int parse_line(char *input, char* linv[]) {
+    char *delim = "\r\n";
+    
+    char *p = strtok(input, delim);
+    
+    if (p == NULL)
+        return 0;
+    
+    int  linc = 0;
+    linv[linc++] = p;
+    while ((p = strtok(NULL, delim)) != NULL)
+        linv[linc++] = p;
+    linv[linc] = '\0';
+    return linc;
+}
 int parse_cmd(char *input, char *cmd[]) {
     char    *symbol = " | ";
     size_t  length   = strlen(input);
