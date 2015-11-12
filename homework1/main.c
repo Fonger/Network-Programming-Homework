@@ -10,7 +10,7 @@
 #include "../lib/unp.h"
 
 #define MAX_LINE 15000
-#define MAX_CMDS 2500
+#define MAX_CMDS 3000
 #define MAX_ARGS 10
 #define ERR_CMD_NOT_FOUND -5
 #define TRUE 1
@@ -63,7 +63,7 @@ void receive_cmd(int sockfd)
 
     Writen(sockfd, welcome, sizeof(welcome));
 
-    ssize_t     n;
+    ssize_t     n = 0;
     char        buf[MAX_LINE];
     int         pipes[MAX_LINE][2];
     int         line = 0;
@@ -72,21 +72,36 @@ void receive_cmd(int sockfd)
 
     setenv("PATH", "/Users/Fonger/ras/bin:bin:.", TRUE);
     printf("%s\n" ,getenv("PATH"));
+    int pos = 0;
 
 again:
-    while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
+    while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
         buf[n] = '\0';
-        
+//        if (buf[n-1] != '\n') {
+//            printf("n-1 != newline...\n");
+//            printf("n-1 is (%c), (%x)\n", buf[n-1], buf[n-1]);
+//            pos += n;
+//            goto again;
+//        } else {
+//            pos = 0;
+//            printf("I see newline!!\n");
+//        }
+    
         char *linv[MAX_CMDS];
         int linc = parse_line(buf, linv);
         for (int z = 0; z < linc; z++) {
             char *cmdv[MAX_CMDS];
             int cmdc = parse_cmd(linv[z], cmdv);
             int fd_in = pipes[line][0];
-
+            
+            if (pipes[line][1] != -1) {
+                Close(pipes[line][1]);
+                pipes[line][1] = -1;
+            }
+            
             for (int i = 0; i < cmdc; i++) {
                 
-                printf("cmdv[%d] = %s\n", i, cmdv[i], strlen(cmdv[i]));
+                printf("cmdv[%d] = %s\n", i, cmdv[i]);
 
                 char *argv[MAX_ARGS];
 
@@ -117,11 +132,11 @@ again:
                 
                 int fd_out;
                 int fd_errout;
-                int in_out_pipe[2];
-                
-                int close_fd_out = TRUE;
-                int close_fd_errout = TRUE;
+                int in_out_pipe[2] = {-1};
 
+                int close_fd_out = 1;
+                int close_fd_errout = 1;
+                
                 if (i + 1 < cmdc) {
                     // If there's next command
                     Pipe(in_out_pipe);
@@ -131,28 +146,26 @@ again:
                     // This is last one
                     fd_out = sockfd;
                     fd_errout = sockfd;
-
+                    
+                    int minus = 0;
+                    
                     for (int q = 0; q < argc; q++) {
                         if (strcmp(argv[q], ">") == 0) {
                             fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
                             argv[q] = '\0';
                             argc = q;
                             break;
-                        } else if (argv[q][0] == '|') {
-                            
+                        } else if (argv[q][0] == '|' && argv[q][1] != '!') {
                             int dest_pipe = atoi(&argv[q][1]) + line;
                             printf("dest_pipe std = %d\n", dest_pipe);
                             if (pipes[dest_pipe][1] == -1)
                                 Pipe(pipes[dest_pipe]);
                             fd_out = pipes[dest_pipe][1];
-
-                            if (dest_pipe > line + 1)
-                                close_fd_out = FALSE;
+                            close_fd_out = 0;
                             
                             argv[q] = '\0';
-                            if (q < argc)
-                                argc = q;
-                        } else if (argv[q][0] == '!') {
+                            minus++;
+                        } else if (argv[q][0] == '!' && argv[q][1] != '|') {
 
                             int dest_pipe = atoi(&argv[q][1]) + line;
                             printf("dest_pipe err = %d\n", dest_pipe);
@@ -160,15 +173,29 @@ again:
                             if (pipes[dest_pipe][1] == -1)
                                 Pipe(pipes[dest_pipe]);
                             fd_errout = pipes[dest_pipe][1];
-
-                            if (dest_pipe > line + 1)
-                                close_fd_errout = FALSE;
+                            close_fd_errout = 0;
 
                             argv[q] = '\0';
-                            if (q < argc)
-                                argc = q;
+                            minus++;
+                        } else if (
+                                   (argv[q][0] == '!' && argv[q][1] == '|') ||
+                                   (argv[q][0] == '|' && argv[q][1] == '!')) {
+
+                            int dest_pipe = atoi(&argv[q][2]) + line;
+                            printf("dest_pipe std+err = %d\n", dest_pipe);
+                            
+                            if (pipes[dest_pipe][1] == -1)
+                                Pipe(pipes[dest_pipe]);
+
+                            fd_out = pipes[dest_pipe][1];
+                            fd_errout = pipes[dest_pipe][1];
+                            
+                            
+                            argv[q] = '\0';
+                            minus++;
                         }
                     }
+                    argc -= minus;
                 }
                 
                 printf("pipe[0]=%d\n", in_out_pipe[0]);
@@ -176,21 +203,13 @@ again:
                 
                 char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, sockfd);
                 
-                if (close_fd_out && fd_out != sockfd)
+                if (close_fd_out && fd_out != sockfd && fd_out != -1)
                     Close(fd_out);
-                if (close_fd_errout && fd_errout != fd_out && fd_errout != sockfd)
+                if (close_fd_errout && fd_errout != fd_out && fd_errout != sockfd && fd_errout != -1)
                     Close(fd_errout);
 
                 if (exit_code == ERR_CMD_NOT_FOUND) {
-                    dprintf(sockfd, "Unknown Command: [%s]\n", argv[0]);
-                    if (pipes[line][1] != -1) {
-                        Close(pipes[line][1]);
-                        pipes[line][1] = -1;
-                    }
-                    if (pipes[line][0] != -1) {
-                        Close(pipes[line][1]);
-                        pipes[line][0] = -1;
-                    }
+                    dprintf(sockfd, "Unknown command: [%s].\n", argv[0]);
 
                     line--;
                     break;
@@ -205,11 +224,13 @@ again:
         }
     }
     if (n < 0 && errno == EINTR) {
+        pos += n;
         goto again;
     }
     else if (n < 0) {
         err_sys("str_echo: read error");
     }
+
 }
 
 
