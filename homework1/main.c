@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include "../lib/unp.h"
 
-#define MAX_LINE 15000
+#define MAX_LINE 100000
 #define MAX_CMDS 3000
 #define MAX_ARGS 10
 #define ERR_CMD_NOT_FOUND -5
@@ -75,7 +75,7 @@ void receive_cmd(int sockfd)
     int pos = 0;
 
 again:
-    while ( (n = read(sockfd, buf, MAXLINE)) > 0) {
+    while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
         buf[n] = '\0';
 //        if (buf[n-1] != '\n') {
 //            printf("n-1 != newline...\n");
