@@ -54,15 +54,11 @@ int main() {
     return 0;
 }
 
-struct process {
-    
-};
+char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
 void receive_cmd(int sockfd)
 {
-    char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
-
-    Writen(sockfd, welcome, sizeof(welcome));
+    Writen(sockfd, welcome, sizeof(welcome) - 1);
 
     ssize_t     n = 0;
     char        buf[MAX_BUFF];
@@ -71,7 +67,7 @@ void receive_cmd(int sockfd)
     
     memset(pipes, -1, sizeof(pipes));
 
-    setenv("PATH", "/Users/Fonger/ras/bin:bin:.", TRUE);
+    setenv("PATH", "/bin:/usr/bin:/Users/Fonger/ras/bin:bin:.", TRUE);
     printf("%s\n" ,getenv("PATH"));
     int pos = 0;
     int unknown_command = 0;
