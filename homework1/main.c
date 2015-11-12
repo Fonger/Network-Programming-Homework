@@ -9,9 +9,10 @@
 #include <stdio.h>
 #include "../lib/unp.h"
 
-#define MAX_LINE 100000
-#define MAX_CMDS 3000
-#define MAX_ARGS 10
+#define MAX_BUFF 100000
+#define MAX_LINE 40000
+#define MAX_CMDS 10000
+#define MAX_ARGS 20
 #define ERR_CMD_NOT_FOUND -5
 #define TRUE 1
 #define FALSE 0
@@ -64,7 +65,7 @@ void receive_cmd(int sockfd)
     Writen(sockfd, welcome, sizeof(welcome));
 
     ssize_t     n = 0;
-    char        buf[MAX_LINE];
+    char        buf[MAX_BUFF];
     int         pipes[MAX_LINE][2];
     int         line = 0;
     
@@ -73,31 +74,35 @@ void receive_cmd(int sockfd)
     setenv("PATH", "/Users/Fonger/ras/bin:bin:.", TRUE);
     printf("%s\n" ,getenv("PATH"));
     int pos = 0;
-
+    int unknown_command = 0;
 again:
-    while ( (n = read(sockfd, buf, MAX_LINE)) > 0) {
-        buf[n] = '\0';
-//        if (buf[n-1] != '\n') {
-//            printf("n-1 != newline...\n");
-//            printf("n-1 is (%c), (%x)\n", buf[n-1], buf[n-1]);
-//            pos += n;
-//            goto again;
-//        } else {
-//            pos = 0;
-//            printf("I see newline!!\n");
-//        }
+    while ( (n = read(sockfd, &buf[pos], MAX_BUFF - pos)) > 0) {
+        if (buf[pos + n - 1] != '\n') {
+            printf("n-1 != newline...\n");
+            printf("n-1 is (%c), (%x)\n", buf[n-1], buf[n-1]);
+            pos += n;
+            goto again;
+        } else {
+            buf[pos + n] = '\0';
+            pos = 0;
+            printf("I see newline!!\n");
+        }
     
-        char *linv[MAX_CMDS];
+        char *linv[MAX_LINE];
         int linc = parse_line(buf, linv);
+        
         for (int z = 0; z < linc; z++) {
             char *cmdv[MAX_CMDS];
             int cmdc = parse_cmd(linv[z], cmdv);
+            printf("line: %d\n unknwon: %d\n", line, unknown_command);
             int fd_in = pipes[line][0];
             
-            if (pipes[line][1] != -1) {
+            if (pipes[line][1] != -1 && !unknown_command) {
                 Close(pipes[line][1]);
                 pipes[line][1] = -1;
             }
+            
+            unknown_command = 0;
             
             for (int i = 0; i < cmdc; i++) {
                 
@@ -132,7 +137,7 @@ again:
                 
                 int fd_out;
                 int fd_errout;
-                int in_out_pipe[2] = {-1};
+                int in_out_pipe[2];
 
                 int close_fd_out = 1;
                 int close_fd_errout = 1;
@@ -210,17 +215,20 @@ again:
 
                 if (exit_code == ERR_CMD_NOT_FOUND) {
                     dprintf(sockfd, "Unknown command: [%s].\n", argv[0]);
-
-                    line--;
+                    unknown_command = 1;
                     break;
                 } else {
+                    if (fd_in != -1)
+                        Close(fd_in);
                     fd_in = in_out_pipe[0];
                 }
                 
             }
 
             showSymbol(sockfd);
-            line++;
+
+            if (!unknown_command)
+                line++;
         }
     }
     if (n < 0 && errno == EINTR) {
@@ -240,9 +248,6 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
     if (child_pid > 0) { // parent
 
         printf("Child spawn with pid: %d\n", child_pid);
-        
-        if (fd_in != -1)
-            Close(fd_in);
         
         int status = 0;
         while( (wait( &status ) == -1) && (errno == EINTR) );
