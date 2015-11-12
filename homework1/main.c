@@ -22,6 +22,8 @@ void receive_cmd(int sockfd);
 int parse_line(char *input, char* linv[]);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
+int parse_number(char input[]);
+
 char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
 
 int main() {
@@ -67,7 +69,7 @@ void receive_cmd(int sockfd)
     
     memset(pipes, -1, sizeof(pipes));
 
-    setenv("PATH", "/Users/Fonger/ras/bin:bin:.", TRUE);
+    setenv("PATH", "bin:.", TRUE);
     printf("%s\n" ,getenv("PATH"));
     int pos = 0;
     int unknown_command = 0;
@@ -157,7 +159,7 @@ again:
                             argc = q;
                             break;
                         } else if (argv[q][0] == '|' && argv[q][1] != '!') {
-                            int dest_pipe = atoi(&argv[q][1]) + line;
+                            int dest_pipe = parse_number(&argv[q][1]) + line;
                             printf("dest_pipe std = %d\n", dest_pipe);
                             if (pipes[dest_pipe][1] == -1)
                                 Pipe(pipes[dest_pipe]);
@@ -168,7 +170,7 @@ again:
                             minus++;
                         } else if (argv[q][0] == '!' && argv[q][1] != '|') {
 
-                            int dest_pipe = atoi(&argv[q][1]) + line;
+                            int dest_pipe = parse_number(&argv[q][1]) + line;
                             printf("dest_pipe err = %d\n", dest_pipe);
                             
                             if (pipes[dest_pipe][1] == -1)
@@ -337,4 +339,21 @@ int parse_argv(char input[], char *argv[]) {
         argv[argc++] = p;
     argv[argc] = '\0';
     return argc;
+}
+
+int parse_number(char input[]) {
+    char *delim = "+";
+    
+    char *p = strtok(input, delim);
+    
+    if (p == NULL)
+        return 0;
+    
+    int num = atoi(p);
+
+    while ((p = strtok(NULL, delim)) != NULL) {
+        num += atoi(p);
+    }
+    
+    return num;
 }
