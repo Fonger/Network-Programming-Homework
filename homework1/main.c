@@ -67,7 +67,7 @@ void receive_cmd(int sockfd)
     
     memset(pipes, -1, sizeof(pipes));
 
-    setenv("PATH", "/bin:/usr/bin:/Users/Fonger/ras/bin:bin:.", TRUE);
+    setenv("PATH", "/Users/Fonger/ras/bin:bin:.", TRUE);
     printf("%s\n" ,getenv("PATH"));
     int pos = 0;
     int unknown_command = 0;
