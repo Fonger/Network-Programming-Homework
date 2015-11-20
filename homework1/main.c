@@ -220,11 +220,33 @@ int receive_cmd(struct USER *user)
             
             if (strcmp(argv[0], "who") == 0) {
                 dprintf(user->connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
-                for (int i = 0; i < MAX_USER; i++) {
-                    if (users[i].id > 0) {
-                        dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n", users[i].id, users[i].name, users[i].ip, users[i].port, users[i].connfd == user->connfd ? "<-me":"");
+                for (int b = 0; b < MAX_USER; b++) {
+                    if (users[b].id > 0) {
+                        dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n",
+                                users[b].id,
+                                users[b].name,
+                                users[b].ip,
+                                users[b].port,
+                                users[b].connfd == user->connfd ? "<-me":"");
                     }
                 }
+                break;
+            }
+            
+            if (strcmp(argv[0], "name") == 0) {
+                for (int b = 0; b < MAX_USER; b++) {
+                    if (users[b].id > 0) {
+                        if (strcmp(argv[1], users[b].name) == 0) {
+                            dprintf(user->connfd, "*** User '%s' already exists. ***\n", argv[1]);
+                            return 0;
+                        }
+                    }
+                }
+                free(user->name);
+                user->name = Strdup(argv[1]);
+                char notify_buffer[100];
+                int len = sprintf(notify_buffer, "*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
+                broadcast(notify_buffer, len);
                 break;
             }
 
