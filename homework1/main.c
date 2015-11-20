@@ -248,6 +248,16 @@ int receive_cmd(struct USER *user)
             broadcast(notify_buffer, len);
             break;
         }
+        
+        if (strcmp(argv[0], "yell") == 0) {
+            for (int j = 1; j < argc; j++)
+                *(argv[j] - 1) = ' ';
+
+            char notify_buffer[100];
+            int len = sprintf(notify_buffer, "*** %s yelled ***: %s\n", user->name, argv[1]);
+            broadcast(notify_buffer, len);
+            break;
+        }
 
         int fd_out;
         int fd_errout;
