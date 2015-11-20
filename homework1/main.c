@@ -93,8 +93,7 @@ int main() {
                     user->id = 0;
                     free(user->ip);
                     free(user->path);
-                    if (user->name != NULL)
-                        free(user->name);
+                    free(user->name);
                     
                     Close(fd);
                     FD_CLR(fd, &afds);
@@ -115,6 +114,7 @@ int set_new_user(int connfd, struct sockaddr_in *cliaddr) {
             users[i].port = cliaddr->sin_port;
             users[i].current_line = 0;
             users[i].path = Strdup("/bin:bin:.");
+            users[i].name = Strdup("(no name)");
             memset(users[i].pipes, -1, sizeof(users[i].pipes));
             return i;
         }
@@ -193,6 +193,16 @@ int receive_cmd(struct USER *user)
                 }
                 else
                     dprintf(user->connfd, "usage: setenv KEY VALIE\n");
+                break;
+            }
+            
+            if (strcmp(argv[0], "who") == 0) {
+                dprintf(user->connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
+                for (int i = 0; i < MAX_USER; i++) {
+                    if (users[i].id > 0) {
+                        dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n", users[i].id, users[i].name, users[i].ip, users[i].port, users[i].connfd == user->connfd ? "<-me":"");
+                    }
+                }
                 break;
             }
             
