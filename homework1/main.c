@@ -31,7 +31,6 @@ struct USER {
 
 void showSymbol(int sockfd);
 int receive_cmd(struct USER *user);
-int parse_line(char *input, char* linv[]);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
 int parse_number(char input[]);
@@ -167,184 +166,179 @@ int receive_cmd(struct USER *user)
     } while (buf[pos - 1] != '\n');
     buf[pos] = '\0';
     
-    char *linv[MAX_LINE];
-    int linc = parse_line(buf, linv);
+    char *cmdv[MAX_CMDS];
+    int cmdc = parse_cmd(buf, cmdv);
+    printf("line: %d\n unknwon: %d\n", user->current_line, unknown_command);
+    int fd_in = user->pipes[user->current_line][0];
     
-    for (int z = 0; z < linc; z++) {
-        char *cmdv[MAX_CMDS];
-        int cmdc = parse_cmd(linv[z], cmdv);
-        printf("line: %d\n unknwon: %d\n", user->current_line, unknown_command);
-        int fd_in = user->pipes[user->current_line][0];
-        
-        if (user->pipes[user->current_line][1] != -1 && !unknown_command) {
-            Close(user->pipes[user->current_line][1]);
-            user->pipes[user->current_line][1] = -1;
-        }
-        
-        unknown_command = 0;
-        
-        for (int i = 0; i < cmdc; i++) {
-            
-            printf("cmdv[%d] = %s\n", i, cmdv[i]);
-
-            char *argv[MAX_ARGS];
-
-            int argc = parse_argv(cmdv[i], argv);
-            
-            if (argc == 0)
-                continue;
-            
-            for (int j = 0; j < argc; j++)
-                printf("argv[%d] = %s\n", j, argv[j]);
-            
-            if (strcmp(argv[0], "exit") == 0)
-                return -1;
-            
-            if (strcmp(argv[0], "printenv") == 0) {
-                for (int j = 1; j < argc; j++)
-                    dprintf(user->connfd, "%s=%s\n", argv[j], getenv(argv[j]));
-                break;
-            }
-            
-            if (strcmp(argv[0], "setenv") == 0) {
-                if (argc == 3) {
-                    setenv(argv[1], argv[2], TRUE);
-                    if (strcmp(argv[1], "PATH") == 0) {
-                        user->path = Strdup(argv[2]);
-                    }
-                }
-                else
-                    dprintf(user->connfd, "usage: setenv KEY VALIE\n");
-                break;
-            }
-            
-            if (strcmp(argv[0], "who") == 0) {
-                dprintf(user->connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
-                for (int b = 0; b < MAX_USER; b++) {
-                    if (users[b].id > 0) {
-                        dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n",
-                                users[b].id,
-                                users[b].name,
-                                users[b].ip,
-                                users[b].port,
-                                users[b].connfd == user->connfd ? "<-me":"");
-                    }
-                }
-                break;
-            }
-            
-            if (strcmp(argv[0], "name") == 0) {
-                for (int b = 0; b < MAX_USER; b++) {
-                    if (users[b].id > 0) {
-                        if (strcmp(argv[1], users[b].name) == 0) {
-                            dprintf(user->connfd, "*** User '%s' already exists. ***\n", argv[1]);
-                            return 0;
-                        }
-                    }
-                }
-                free(user->name);
-                user->name = Strdup(argv[1]);
-                char notify_buffer[100];
-                int len = sprintf(notify_buffer, "*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
-                broadcast(notify_buffer, len);
-                break;
-            }
-
-            int fd_out;
-            int fd_errout;
-            int in_out_pipe[2];
-
-            int close_fd_out = 1;
-            int close_fd_errout = 1;
-            
-            if (i + 1 < cmdc) {
-                // If there's next command
-                Pipe(in_out_pipe);
-                fd_out = in_out_pipe[1];
-                fd_errout = in_out_pipe[1];
-            } else {
-                // This is last one
-                fd_out = user->connfd;
-                fd_errout = user->connfd;
-                
-                int minus = 0;
-                
-                for (int q = 0; q < argc; q++) {
-                    if (strcmp(argv[q], ">") == 0) {
-                        fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                        argv[q] = '\0';
-                        argc = q;
-                        break;
-                    } else if (argv[q][0] == '|' && argv[q][1] != '!') {
-                        int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
-                        printf("dest_pipe std = %d\n", dest_pipe);
-                        if (user->pipes[dest_pipe][1] == -1)
-                            Pipe(user->pipes[dest_pipe]);
-                        fd_out = user->pipes[dest_pipe][1];
-                        close_fd_out = 0;
-                        
-                        argv[q] = '\0';
-                        minus++;
-                    } else if (argv[q][0] == '!' && argv[q][1] != '|') {
-
-                        int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
-                        printf("dest_pipe err = %d\n", dest_pipe);
-                        
-                        if (user->pipes[dest_pipe][1] == -1)
-                            Pipe(user->pipes[dest_pipe]);
-                        fd_errout = user->pipes[dest_pipe][1];
-                        close_fd_errout = 0;
-
-                        argv[q] = '\0';
-                        minus++;
-                    } else if (
-                               (argv[q][0] == '!' && argv[q][1] == '|') ||
-                               (argv[q][0] == '|' && argv[q][1] == '!')) {
-
-                        int dest_pipe = atoi(&argv[q][2]) + user->current_line;
-                        printf("dest_pipe std+err = %d\n", dest_pipe);
-                        
-                        if (user->pipes[dest_pipe][1] == -1)
-                            Pipe(user->pipes[dest_pipe]);
-
-                        fd_out = user->pipes[dest_pipe][1];
-                        fd_errout = user->pipes[dest_pipe][1];
-                        
-                        
-                        argv[q] = '\0';
-                        minus++;
-                    }
-                }
-                argc -= minus;
-            }
-            
-            printf("pipe[0]=%d\n", in_out_pipe[0]);
-            printf("pipe[1]=%d\n", in_out_pipe[1]);
-            
-            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, user->connfd);
-            
-            if (close_fd_out && fd_out != user->connfd && fd_out != -1)
-                Close(fd_out);
-            if (close_fd_errout && fd_errout != fd_out && fd_errout != user->connfd && fd_errout != -1)
-                Close(fd_errout);
-
-            if (exit_code == ERR_CMD_NOT_FOUND) {
-                dprintf(user->connfd, "Unknown command: [%s].\n", argv[0]);
-                unknown_command = 1;
-                break;
-            } else {
-                if (fd_in != -1)
-                    Close(fd_in);
-                fd_in = in_out_pipe[0];
-            }
-            
-        }
-
-        showSymbol(user->connfd);
-
-        if (!unknown_command)
-            user->current_line++;
+    if (user->pipes[user->current_line][1] != -1 && !unknown_command) {
+        Close(user->pipes[user->current_line][1]);
+        user->pipes[user->current_line][1] = -1;
     }
+    
+    unknown_command = 0;
+    
+    for (int i = 0; i < cmdc; i++) {
+        
+        printf("cmdv[%d] = %s\n", i, cmdv[i]);
+
+        char *argv[MAX_ARGS];
+
+        int argc = parse_argv(cmdv[i], argv);
+        
+        if (argc == 0)
+            continue;
+        
+        for (int j = 0; j < argc; j++)
+            printf("argv[%d] = %s\n", j, argv[j]);
+        
+        if (strcmp(argv[0], "exit") == 0)
+            return -1;
+        
+        if (strcmp(argv[0], "printenv") == 0) {
+            for (int j = 1; j < argc; j++)
+                dprintf(user->connfd, "%s=%s\n", argv[j], getenv(argv[j]));
+            break;
+        }
+        
+        if (strcmp(argv[0], "setenv") == 0) {
+            if (argc == 3) {
+                setenv(argv[1], argv[2], TRUE);
+                if (strcmp(argv[1], "PATH") == 0) {
+                    user->path = Strdup(argv[2]);
+                }
+            }
+            else
+                dprintf(user->connfd, "usage: setenv KEY VALIE\n");
+            break;
+        }
+        
+        if (strcmp(argv[0], "who") == 0) {
+            dprintf(user->connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
+            for (int b = 0; b < MAX_USER; b++) {
+                if (users[b].id > 0) {
+                    dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n",
+                            users[b].id,
+                            users[b].name,
+                            users[b].ip,
+                            users[b].port,
+                            users[b].connfd == user->connfd ? "<-me":"");
+                }
+            }
+            break;
+        }
+        
+        if (strcmp(argv[0], "name") == 0) {
+            for (int b = 0; b < MAX_USER; b++) {
+                if (users[b].id > 0) {
+                    if (strcmp(argv[1], users[b].name) == 0) {
+                        dprintf(user->connfd, "*** User '%s' already exists. ***\n", argv[1]);
+                        return 0;
+                    }
+                }
+            }
+            free(user->name);
+            user->name = Strdup(argv[1]);
+            char notify_buffer[100];
+            int len = sprintf(notify_buffer, "*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
+            broadcast(notify_buffer, len);
+            break;
+        }
+
+        int fd_out;
+        int fd_errout;
+        int in_out_pipe[2];
+
+        int close_fd_out = 1;
+        int close_fd_errout = 1;
+        
+        if (i + 1 < cmdc) {
+            // If there's next command
+            Pipe(in_out_pipe);
+            fd_out = in_out_pipe[1];
+            fd_errout = in_out_pipe[1];
+        } else {
+            // This is last one
+            fd_out = user->connfd;
+            fd_errout = user->connfd;
+            
+            int minus = 0;
+            
+            for (int q = 0; q < argc; q++) {
+                if (strcmp(argv[q], ">") == 0) {
+                    fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                    argv[q] = '\0';
+                    argc = q;
+                    break;
+                } else if (argv[q][0] == '|' && argv[q][1] != '!') {
+                    int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
+                    printf("dest_pipe std = %d\n", dest_pipe);
+                    if (user->pipes[dest_pipe][1] == -1)
+                        Pipe(user->pipes[dest_pipe]);
+                    fd_out = user->pipes[dest_pipe][1];
+                    close_fd_out = 0;
+                    
+                    argv[q] = '\0';
+                    minus++;
+                } else if (argv[q][0] == '!' && argv[q][1] != '|') {
+
+                    int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
+                    printf("dest_pipe err = %d\n", dest_pipe);
+                    
+                    if (user->pipes[dest_pipe][1] == -1)
+                        Pipe(user->pipes[dest_pipe]);
+                    fd_errout = user->pipes[dest_pipe][1];
+                    close_fd_errout = 0;
+
+                    argv[q] = '\0';
+                    minus++;
+                } else if (
+                           (argv[q][0] == '!' && argv[q][1] == '|') ||
+                           (argv[q][0] == '|' && argv[q][1] == '!')) {
+
+                    int dest_pipe = atoi(&argv[q][2]) + user->current_line;
+                    printf("dest_pipe std+err = %d\n", dest_pipe);
+                    
+                    if (user->pipes[dest_pipe][1] == -1)
+                        Pipe(user->pipes[dest_pipe]);
+
+                    fd_out = user->pipes[dest_pipe][1];
+                    fd_errout = user->pipes[dest_pipe][1];
+                    
+                    
+                    argv[q] = '\0';
+                    minus++;
+                }
+            }
+            argc -= minus;
+        }
+        
+        printf("pipe[0]=%d\n", in_out_pipe[0]);
+        printf("pipe[1]=%d\n", in_out_pipe[1]);
+        
+        char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, user->connfd);
+        
+        if (close_fd_out && fd_out != user->connfd && fd_out != -1)
+            Close(fd_out);
+        if (close_fd_errout && fd_errout != fd_out && fd_errout != user->connfd && fd_errout != -1)
+            Close(fd_errout);
+
+        if (exit_code == ERR_CMD_NOT_FOUND) {
+            dprintf(user->connfd, "Unknown command: [%s].\n", argv[0]);
+            unknown_command = 1;
+            break;
+        } else {
+            if (fd_in != -1)
+                Close(fd_in);
+            fd_in = in_out_pipe[0];
+        }
+        
+    }
+
+    showSymbol(user->connfd);
+
+    if (!unknown_command)
+        user->current_line++;
     return 0;
 }
 
@@ -393,21 +387,7 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
 void showSymbol(int sockfd) {
     Writen(sockfd, "% ", 2);
 }
-int parse_line(char *input, char* linv[]) {
-    char *delim = "\r\n";
-    
-    char *p = strtok(input, delim);
-    
-    if (p == NULL)
-        return 0;
-    
-    int  linc = 0;
-    linv[linc++] = p;
-    while ((p = strtok(NULL, delim)) != NULL)
-        linv[linc++] = p;
-    linv[linc] = '\0';
-    return linc;
-}
+
 int parse_cmd(char *input, char *cmd[]) {
     char    *symbol = " | ";
     size_t  length   = strlen(input);
