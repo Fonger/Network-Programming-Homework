@@ -92,7 +92,7 @@ int main() {
             int len = sprintf(notify_buf, "*** User '%s' entered from %s/%d. ***\n", user->name, user->ip, user->port);
             broadcast(notify_buf, len);
         }
-        for (int fd = 0; fd<nfds; fd++) {
+        for (int fd = 3; fd<nfds; fd++) {
             if (fd != listenfd && FD_ISSET(fd, &rfds)) {
                 struct USER *user = get_user(fd);
                 if (receive_cmd(user) == -1) { //exit
@@ -460,7 +460,7 @@ int parse_cmd(char *input, char *cmd[]) {
 }
 
 int parse_argv(char input[], char *argv[]) {
-    char *delim = " \n";
+    char *delim = " \r\n";
     
     char *p = strtok(input, delim);
     
