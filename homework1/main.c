@@ -35,7 +35,9 @@ int parse_line(char *input, char* linv[]);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
 int parse_number(char input[]);
-int set_new_user(int connfd, struct sockaddr_in *cliaddr);
+struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr);
+void broadcast(char *message, size_t length);
+
 struct USER* get_user(int connfd);
 
 char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
@@ -83,13 +85,23 @@ int main() {
                 nfds = connfd + 1;
 
             Writen(connfd, welcome, sizeof(welcome) - 1);
-            set_new_user(connfd, &cliaddr);
+
+            struct USER* user = set_new_user(connfd, &cliaddr);
+            
+            char notify_buf[100];
+            int len = sprintf(notify_buf, "*** User '%s' entered from %s/%d. ***\n", user->name, user->ip, user->port);
+            broadcast(notify_buf, len);
         }
         for (int fd = 0; fd<nfds; fd++) {
             if (fd != listenfd && FD_ISSET(fd, &rfds)) {
                 struct USER *user = get_user(fd);
                 if (receive_cmd(user) == -1) { //exit
                     // TODO: update nfds
+
+                    char notify_buf[100];
+                    int len = sprintf(notify_buf, "*** User '%s' left. ***\n", user->name);
+                    broadcast(notify_buf, len);
+                    
                     user->id = 0;
                     free(user->ip);
                     free(user->path);
@@ -105,21 +117,22 @@ int main() {
     return 0;
 }
 
-int set_new_user(int connfd, struct sockaddr_in *cliaddr) {
+struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
     for (int i = 0; i < MAX_USER; i++) {
-        if (users[i].id == 0) {
-            users[i].id = i + 1;
-            users[i].connfd = connfd;
-            users[i].ip = Strdup(inet_ntoa(cliaddr->sin_addr));
-            users[i].port = cliaddr->sin_port;
-            users[i].current_line = 0;
-            users[i].path = Strdup("/bin:bin:.");
-            users[i].name = Strdup("(no name)");
-            memset(users[i].pipes, -1, sizeof(users[i].pipes));
-            return i;
+        struct USER* user = &users[i];
+        if (user->id == 0) {
+            user->id = i + 1;
+            user->connfd = connfd;
+            user->ip = Strdup(inet_ntoa(cliaddr->sin_addr));
+            user->port = cliaddr->sin_port;
+            user->current_line = 0;
+            user->path = Strdup("/bin:bin:.");
+            user->name = Strdup("(no name)");
+            memset(user->pipes, -1, sizeof(user->pipes));
+            return user;
         }
     }
-    return -1;
+    return NULL;
 }
 
 struct USER* get_user(int connfd) {
@@ -128,6 +141,15 @@ struct USER* get_user(int connfd) {
             return &users[i];
     return NULL;
 }
+
+void broadcast(char *message, size_t length) {
+    if (length == 0) length = strlen(message);
+    for (int i = 0; i < MAX_USER; i++) {
+        if (users[i].id > 0)
+            Writen(users[i].connfd, message, length);
+    }
+}
+
 
 int receive_cmd(struct USER *user)
 {
@@ -205,7 +227,7 @@ int receive_cmd(struct USER *user)
                 }
                 break;
             }
-            
+
             int fd_out;
             int fd_errout;
             int in_out_pipe[2];
