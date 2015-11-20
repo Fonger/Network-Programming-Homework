@@ -233,6 +233,14 @@ int receive_cmd(struct USER *user)
         }
         
         if (strcmp(argv[0], "name") == 0) {
+            if (argc < 2) {
+                dprintf(user->connfd, "usage: name (name)\n");
+                break;
+            }
+            
+            for (int j = 2; j < argc; j++)
+                *(argv[j] - 1) = ' ';
+            
             for (int b = 0; b < MAX_USER; b++) {
                 if (users[b].id > 0) {
                     if (strcmp(argv[1], users[b].name) == 0) {
