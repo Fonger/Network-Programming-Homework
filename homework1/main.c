@@ -35,6 +35,7 @@ int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
 int parse_number(char input[]);
 struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr);
+void clear_user(struct USER* user);
 void broadcast(char *message, size_t length);
 
 struct USER* get_user(int connfd);
@@ -101,11 +102,7 @@ int main() {
                     int len = sprintf(notify_buf, "*** User '%s' left. ***\n", user->name);
                     broadcast(notify_buf, len);
                     
-                    user->id = 0;
-                    free(user->ip);
-                    free(user->path);
-                    free(user->name);
-                    
+                    clear_user(user);
                     Close(fd);
                     FD_CLR(fd, &afds);
                 }
@@ -132,6 +129,13 @@ struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
         }
     }
     return NULL;
+}
+
+void clear_user(struct USER* user) {
+    user->id = 0;
+    free(user->ip);
+    free(user->path);
+    free(user->name);
 }
 
 struct USER* get_user(int connfd) {
