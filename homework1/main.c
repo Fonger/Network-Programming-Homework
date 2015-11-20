@@ -281,7 +281,12 @@ int receive_cmd(struct USER *user)
                 *(argv[j] - 1) = ' ';
             
             int dest_user_id = atoi(argv[1]);
-            dprintf(users[dest_user_id - 1].connfd, "*** %s told you ***: %s\n", user->name, argv[2]);
+            struct USER* dest_user = &users[dest_user_id - 1];
+            
+            if (dest_user->id > 0)
+                dprintf(dest_user->connfd, "*** %s told you ***: %s\n", user->name, argv[2]);
+            else
+                dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
             break;
         }
         
