@@ -311,3 +311,12 @@ Socketpair(int family, int type, int protocol, int *fd)
     if ( (n = socketpair(family, type, protocol, fd)) < 0)
         err_sys("socketpair error");
 }
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET)
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
