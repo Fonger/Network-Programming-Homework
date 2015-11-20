@@ -250,6 +250,11 @@ int receive_cmd(struct USER *user)
         }
         
         if (strcmp(argv[0], "yell") == 0) {
+            if (argc < 2) {
+                dprintf(user->connfd, "usage: yell (message)\n");
+                break;
+            }
+            
             for (int j = 1; j < argc; j++)
                 *(argv[j] - 1) = ' ';
 
@@ -258,7 +263,7 @@ int receive_cmd(struct USER *user)
             broadcast(notify_buffer, len);
             break;
         }
-
+        
         int fd_out;
         int fd_errout;
         int in_out_pipe[2];
