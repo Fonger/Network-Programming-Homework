@@ -264,6 +264,19 @@ int receive_cmd(struct USER *user)
             break;
         }
         
+        if (strcmp(argv[0], "tell") == 0) {
+            if (argc < 3) {
+                dprintf(user->connfd, "usage: tell (client id) (message)\n");
+                break;
+            }
+            for (int j = 3; j < argc; j++)
+                *(argv[j] - 1) = ' ';
+            
+            int dest_user_id = atoi(argv[1]);
+            dprintf(users[dest_user_id - 1].connfd, "*** %s told you ***: %s\n", user->name, argv[2]);
+            break;
+        }
+        
         int fd_out;
         int fd_errout;
         int in_out_pipe[2];
