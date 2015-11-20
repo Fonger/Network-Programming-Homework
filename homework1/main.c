@@ -91,6 +91,11 @@ int main() {
                 if (receive_cmd(user) == -1) { //exit
                     // TODO: update nfds
                     user->id = 0;
+                    free(user->ip);
+                    free(user->path);
+                    if (user->name != NULL)
+                        free(user->name);
+                    
                     Close(fd);
                     FD_CLR(fd, &afds);
                 }
@@ -106,9 +111,10 @@ int set_new_user(int connfd, struct sockaddr_in *cliaddr) {
         if (users[i].id == 0) {
             users[i].id = i + 1;
             users[i].connfd = connfd;
-            users[i].ip = inet_ntoa(cliaddr->sin_addr);
+            users[i].ip = Strdup(inet_ntoa(cliaddr->sin_addr));
             users[i].port = cliaddr->sin_port;
             users[i].current_line = 0;
+            users[i].path = Strdup("/bin:bin:.");
             memset(users[i].pipes, -1, sizeof(users[i].pipes));
             return i;
         }
@@ -128,14 +134,13 @@ int receive_cmd(struct USER *user)
     ssize_t     n = 0;
     char        buf[MAX_BUFF];
 
-    setenv("PATH", "/bin:bin:.", TRUE);
-    printf("%s\n" ,getenv("PATH"));
+    setenv("PATH", user->path, TRUE);
+
     int pos = 0;
     int unknown_command = 0;
 
     do {
         n = Read(user->connfd, &buf[pos], MAX_BUFF - pos);
-        printf("read pos=%d n=%lu\n", pos, n);
         pos += n;
     } while (buf[pos - 1] != '\n');
     buf[pos] = '\0';
@@ -180,8 +185,12 @@ int receive_cmd(struct USER *user)
             }
             
             if (strcmp(argv[0], "setenv") == 0) {
-                if (argc == 3)
+                if (argc == 3) {
                     setenv(argv[1], argv[2], TRUE);
+                    if (strcmp(argv[1], "PATH") == 0) {
+                        user->path = Strdup(argv[2]);
+                    }
+                }
                 else
                     dprintf(user->connfd, "usage: setenv KEY VALIE\n");
                 break;
