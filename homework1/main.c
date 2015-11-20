@@ -255,7 +255,7 @@ int receive_cmd(struct USER *user)
                 break;
             }
             
-            for (int j = 1; j < argc; j++)
+            for (int j = 2; j < argc; j++)
                 *(argv[j] - 1) = ' ';
 
             char notify_buffer[100];
