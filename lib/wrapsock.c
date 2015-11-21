@@ -31,8 +31,11 @@ again:
             if (errno == ECONNABORTED)
 #endif
                 goto again;
-            else
+            else {
+                if (errno == EINTR)
+                    goto again;
                 err_sys("accept error");
+            }
     }
     return(n);
 }

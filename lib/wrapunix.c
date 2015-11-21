@@ -141,8 +141,12 @@ Read(int fd, void *ptr, size_t nbytes)
 {
     ssize_t		n;
     
-    if ( (n = read(fd, ptr, nbytes)) == -1)
+again:
+    if ( (n = read(fd, ptr, nbytes)) < 0) {
+        if (errno == EINTR)
+            goto again;
         err_sys("read error");
+    }
     return(n);
 }
 
