@@ -257,7 +257,7 @@ int receive_cmd(struct USER *user)
             for (int b = 0; b < MAX_USER; b++) {
                 if (users[b].id > 0) {
                     if (strcmp(argv[1], users[b].name) == 0) {
-                        dprintf(user->connfd, "*** User '%s' already exists. ***\n", argv[1]);
+                        dprintf(user->connfd, "*** User '%s' already exists. ***\n%% ", argv[1]);
                         free(input);
                         return 0;
                     }
