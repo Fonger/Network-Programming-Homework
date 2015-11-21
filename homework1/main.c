@@ -7,6 +7,7 @@
 //
 
 #include <stdio.h>
+#include <stdarg.h>
 #include "../lib/unp.h"
 
 #define MAX_BUFF 100000
@@ -36,7 +37,7 @@ int parse_argv(char input[], char *out_argv[]);
 int parse_number(char input[]);
 struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr);
 void clear_user(struct USER* user);
-void broadcast(char *message, size_t length);
+void broadcast(const char *format, ...);
 
 struct USER* get_user(int connfd);
 
@@ -91,9 +92,7 @@ int main() {
 
             struct USER* user = set_new_user(connfd, &cliaddr);
             
-            char notify_buf[100];
-            int len = sprintf(notify_buf, "*** User '%s' entered from %s/%d. ***\n", user->name, user->ip, user->port);
-            broadcast(notify_buf, len);
+            broadcast("*** User '%s' entered from %s/%d. ***\n", user->name, user->ip, user->port);
         }
         for (int fd = 3; fd<nfds; fd++) {
             if (fd != listenfd && FD_ISSET(fd, &rfds)) {
@@ -101,9 +100,7 @@ int main() {
                 if (receive_cmd(user) == -1) { //exit
                     // TODO: update nfds
 
-                    char notify_buf[100];
-                    int len = sprintf(notify_buf, "*** User '%s' left. ***\n", user->name);
-                    broadcast(notify_buf, len);
+                    broadcast("*** User '%s' left. ***\n", user->name);
                     
                     clear_user(user);
                     Close(fd);
@@ -148,11 +145,15 @@ struct USER* get_user(int connfd) {
     return NULL;
 }
 
-void broadcast(char *message, size_t length) {
-    if (length == 0) length = strlen(message);
+void broadcast(const char *format, ...) {
+    va_list args;
+    
     for (int i = 0; i < MAX_USER; i++) {
-        if (users[i].id > 0)
-            Writen(users[i].connfd, message, length);
+        if (users[i].id > 0) {
+            va_start(args, format);
+            vdprintf(users[i].connfd, format, args);
+            va_end(args);
+        }
     }
 }
 
@@ -254,9 +255,7 @@ int receive_cmd(struct USER *user)
             }
             free(user->name);
             user->name = Strdup(argv[1]);
-            char notify_buffer[100];
-            int len = sprintf(notify_buffer, "*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
-            broadcast(notify_buffer, len);
+            broadcast("*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
             break;
         }
         
@@ -269,9 +268,7 @@ int receive_cmd(struct USER *user)
             for (int j = 2; j < argc; j++)
                 *(argv[j] - 1) = ' ';
 
-            char notify_buffer[100];
-            int len = sprintf(notify_buffer, "*** %s yelled ***: %s\n", user->name, argv[1]);
-            broadcast(notify_buffer, len);
+            broadcast("*** %s yelled ***: %s\n", user->name, argv[1]);
             break;
         }
         
