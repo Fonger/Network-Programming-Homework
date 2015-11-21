@@ -49,6 +49,7 @@ char welcome[] = "****************************************\n** Welcome to the in
 
 int main() {
     printf("Hello, World!\n");
+    chdir("/Users/jerry/Downloads/ras");
     memset(public_pipes, -1, sizeof(public_pipes));
     
     int listenfd, connfd;
@@ -124,7 +125,7 @@ struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
             user->ip = Strdup(inet_ntoa(cliaddr->sin_addr));
             user->port = cliaddr->sin_port;
             user->current_line = 0;
-            user->path = Strdup("/bin:bin:.");
+            user->path = Strdup("/Users/jerry/Downloads/ras/bin:/bin:bin:.");
             user->name = Strdup("(no name)");
             memset(user->pipes, -1, sizeof(user->pipes));
             return user;
@@ -320,31 +321,28 @@ int receive_cmd(struct USER *user)
                 } else if (argv[q][0] == '>') {
                     int pipe_id = atoi(&argv[q][1]);
                     int *pub_pipe = public_pipes[pipe_id];
-                    
+                    minus++;
                     argv[q] = '\0';
                     if (pub_pipe[1] == -1)
                         Pipe(pub_pipe);
                     else {
                         dprintf(user->connfd, "*** Error: the pipe #%d already exists. ***\n", pipe_id);
-                        return 0;
+                        break;
                     }
                     fd_out = pub_pipe[1];
                     close_fd_out = 0;
-                    break;
                 } else if (argv[q][0] == '<') {
                     int pipe_id = atoi(&argv[q][1]);
                     int *pub_pipe = public_pipes[pipe_id];
-                    
+                    minus++;
                     argv[q] = '\0';
                     if (pub_pipe[1] == -1) {
-                        dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***", pipe_id);
-                        return 0;
+                        dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n", pipe_id);
+                        break;
                     }
-                    
                     Close(pub_pipe[1]);
                     pub_pipe[1] = -1;
                     fd_in = pub_pipe[0];
-                    break;
                 } else if (argv[q][0] == '|' && argv[q][1] != '!') {
                     int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
                     printf("dest_pipe std = %d\n", dest_pipe);
@@ -403,6 +401,8 @@ int receive_cmd(struct USER *user)
             unknown_command = 1;
             break;
         } else {
+            if (fd_in != -1)
+                Close(fd_in);
             fd_in = in_out_pipe[0];
         }
         
@@ -423,8 +423,6 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
 
         printf("Child spawn with pid: %d\n", child_pid);
         
-        if (fd_in != -1)
-            Close(fd_in);
         
         int status = 0;
         while( (wait( &status ) == -1) && (errno == EINTR) );
