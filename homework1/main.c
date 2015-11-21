@@ -318,7 +318,7 @@ int receive_cmd(struct USER *user)
                     minus++;
                     argv[q] = '\0';
                     if (pub_pipe[1] == -1) {
-                        dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
+                        dprintf(user->connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
                         return 0;
                     }
                     Close(pub_pipe[1]);
@@ -355,7 +355,7 @@ int receive_cmd(struct USER *user)
                     if (pub_pipe[1] == -1)
                         Pipe(pub_pipe);
                     else {
-                        dprintf(user->connfd, "*** Error: the pipe #%d already exists. ***\n%% ", pipe_id);
+                        dprintf(user->connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
                         return 0;
                     }
                     fd_out = pub_pipe[1];
