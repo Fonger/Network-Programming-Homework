@@ -312,6 +312,8 @@ int receive_cmd(struct USER *user)
                 Close(pub_pipe[1]);
                 pub_pipe[1] = -1;
                 fd_in = pub_pipe[0];
+                broadcast("*** %s (#%d) just received via '%s' ***\n", user->name, user->id, cmdv[i]);
+                break;
             }
         }
         if (i + 1 < cmdc) {
@@ -344,6 +346,7 @@ int receive_cmd(struct USER *user)
                     }
                     fd_out = pub_pipe[1];
                     close_fd_out = 0;
+                    broadcast("*** %s (#%d) just piped '%s' ***\n", user->name, user->id, cmdv[i]);
                 } else if (argv[q][0] == '|' && argv[q][1] != '!') {
                     int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
                     printf("dest_pipe std = %d\n", dest_pipe);
