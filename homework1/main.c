@@ -299,21 +299,24 @@ int receive_cmd(struct USER *user)
         
         int minus = 0;
 
-        for (int q = 0; q < argc; q++) {
-            if (argv[q][0] == '<') {
-                int pipe_id = atoi(&argv[q][1]);
-                int *pub_pipe = public_pipes[pipe_id];
-                minus++;
-                argv[q] = '\0';
-                if (pub_pipe[1] == -1) {
-                    dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
-                    return 0;
+        // Receiving from public pipe only happen in first command
+        if (i == 0) {
+            for (int q = 0; q < argc; q++) {
+                if (argv[q][0] == '<') {
+                    int pipe_id = atoi(&argv[q][1]);
+                    int *pub_pipe = public_pipes[pipe_id];
+                    minus++;
+                    argv[q] = '\0';
+                    if (pub_pipe[1] == -1) {
+                        dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
+                        return 0;
+                    }
+                    Close(pub_pipe[1]);
+                    pub_pipe[1] = -1;
+                    fd_in = pub_pipe[0];
+                    broadcast("*** %s (#%d) just received via '%s' ***\n", user->name, user->id, cmdv[i]);
+                    break;
                 }
-                Close(pub_pipe[1]);
-                pub_pipe[1] = -1;
-                fd_in = pub_pipe[0];
-                broadcast("*** %s (#%d) just received via '%s' ***\n", user->name, user->id, cmdv[i]);
-                break;
             }
         }
         if (i + 1 < cmdc) {
