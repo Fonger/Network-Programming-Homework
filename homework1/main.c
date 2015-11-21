@@ -300,6 +300,23 @@ int receive_cmd(struct USER *user)
         int close_fd_out = 1;
         int close_fd_errout = 1;
         
+        int minus = 0;
+
+        for (int q = 0; q < argc; q++) {
+            if (argv[q][0] == '<') {
+                int pipe_id = atoi(&argv[q][1]);
+                int *pub_pipe = public_pipes[pipe_id];
+                minus++;
+                argv[q] = '\0';
+                if (pub_pipe[1] == -1) {
+                    dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
+                    return 0;
+                }
+                Close(pub_pipe[1]);
+                pub_pipe[1] = -1;
+                fd_in = pub_pipe[0];
+            }
+        }
         if (i + 1 < cmdc) {
             // If there's next command
             Pipe(in_out_pipe);
@@ -310,9 +327,8 @@ int receive_cmd(struct USER *user)
             fd_out = user->connfd;
             fd_errout = user->connfd;
             
-            int minus = 0;
-            
             for (int q = 0; q < argc; q++) {
+                if (argv[q] == '\0') continue;
                 if (strcmp(argv[q], ">") == 0) {
                     fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
                     argv[q] = '\0';
@@ -326,23 +342,11 @@ int receive_cmd(struct USER *user)
                     if (pub_pipe[1] == -1)
                         Pipe(pub_pipe);
                     else {
-                        dprintf(user->connfd, "*** Error: the pipe #%d already exists. ***\n", pipe_id);
-                        break;
+                        dprintf(user->connfd, "*** Error: the pipe #%d already exists. ***\n%% ", pipe_id);
+                        return 0;
                     }
                     fd_out = pub_pipe[1];
                     close_fd_out = 0;
-                } else if (argv[q][0] == '<') {
-                    int pipe_id = atoi(&argv[q][1]);
-                    int *pub_pipe = public_pipes[pipe_id];
-                    minus++;
-                    argv[q] = '\0';
-                    if (pub_pipe[1] == -1) {
-                        dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n", pipe_id);
-                        break;
-                    }
-                    Close(pub_pipe[1]);
-                    pub_pipe[1] = -1;
-                    fd_in = pub_pipe[0];
                 } else if (argv[q][0] == '|' && argv[q][1] != '!') {
                     int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
                     printf("dest_pipe std = %d\n", dest_pipe);
@@ -383,8 +387,9 @@ int receive_cmd(struct USER *user)
                     minus++;
                 }
             }
-            argc -= minus;
         }
+        
+        argc -= minus;
         
         printf("pipe[0]=%d\n", in_out_pipe[0]);
         printf("pipe[1]=%d\n", in_out_pipe[1]);
