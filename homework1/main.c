@@ -174,6 +174,13 @@ int receive_cmd(struct USER *user)
     } while (buf[pos - 1] != '\n');
     buf[pos] = '\0';
     
+    char *input = Strdup(buf);
+    if (input[pos-2] == '\r')
+        input[pos-2] = '\0';
+    if (input[pos-1] == '\n')
+        input[pos-1] = '\0';
+
+    
     char *cmdv[MAX_CMDS];
     int cmdc = parse_cmd(buf, cmdv);
     printf("line: %d\n unknwon: %d\n", user->current_line, unknown_command);
@@ -200,8 +207,10 @@ int receive_cmd(struct USER *user)
         for (int j = 0; j < argc; j++)
             printf("argv[%d] = %s\n", j, argv[j]);
         
-        if (strcmp(argv[0], "exit") == 0)
+        if (strcmp(argv[0], "exit") == 0) {
+            free(input);
             return -1;
+        }
         
         if (strcmp(argv[0], "printenv") == 0) {
             for (int j = 1; j < argc; j++)
@@ -249,6 +258,7 @@ int receive_cmd(struct USER *user)
                 if (users[b].id > 0) {
                     if (strcmp(argv[1], users[b].name) == 0) {
                         dprintf(user->connfd, "*** User '%s' already exists. ***\n", argv[1]);
+                        free(input);
                         return 0;
                     }
                 }
@@ -314,7 +324,8 @@ int receive_cmd(struct USER *user)
                     Close(pub_pipe[1]);
                     pub_pipe[1] = -1;
                     fd_in = pub_pipe[0];
-                    broadcast("*** %s (#%d) just received via '%s' ***\n", user->name, user->id, cmdv[i]);
+                    
+                    broadcast("*** %s (#%d) just received via '%s' ***\n", user->name, user->id, input);
                     break;
                 }
             }
@@ -349,7 +360,7 @@ int receive_cmd(struct USER *user)
                     }
                     fd_out = pub_pipe[1];
                     close_fd_out = 0;
-                    broadcast("*** %s (#%d) just piped '%s' ***\n", user->name, user->id, cmdv[i]);
+                    broadcast("*** %s (#%d) just piped '%s' ***\n", user->name, user->id, input);
                 } else if (argv[q][0] == '|' && argv[q][1] != '!') {
                     int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
                     printf("dest_pipe std = %d\n", dest_pipe);
@@ -420,6 +431,7 @@ int receive_cmd(struct USER *user)
 
     if (!unknown_command)
         user->current_line++;
+    free(input);
     return 0;
 }
 
