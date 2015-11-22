@@ -429,6 +429,7 @@ int receive_cmd()
                             return 0;
                         }
                         fd_out = pub_pipe[1];
+                        fd_errout = pub_pipe[1];
                         close_fd_out = 0;
                         broadcast("*** %s (#%d) just piped '%s' ***\n", me->name, me->id, input);
                     } else if (argv[q][0] == '|' && argv[q][1] != '!') {
