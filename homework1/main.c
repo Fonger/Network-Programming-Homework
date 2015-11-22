@@ -34,7 +34,7 @@ struct USER {
     pid_t       pid;
 };
 
-struct Message {
+struct BROADCAST {
     
 };
 
@@ -273,10 +273,8 @@ int receive_cmd(struct USER *user, int connfd)
                         }
                     }
                 }
-                size_t namelen = strlen(argv[1]);
-                if (namelen > MAX_NAME)
-                    argv[1][MAX_NAME] = '\0';
-                strcpy(user->name, argv[1]);
+
+                strlcpy(user->name, argv[1], sizeof(user->name));
                 broadcast("*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
                 break;
             }
