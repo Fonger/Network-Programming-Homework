@@ -478,7 +478,7 @@ int receive_cmd()
                         strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
                         strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
                         mkfifo(fifo_path, S_IRWXU);
-                        
+
                         fifopath = Strdup(fifo_path);
                         argv[q] = '\0';
 
@@ -585,8 +585,10 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
             pid_t grandchild_pid = Fork();
             if (grandchild_pid > 0)
                 exit(0);
-            else
+            else if (grandchild_pid == 0) {
                 fd_out = open(fifopath, O_WRONLY);
+                fd_errout = fd_out;
+            }
         }
         
         if (fd_in != -1) {
