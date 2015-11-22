@@ -34,8 +34,8 @@ struct USER {
     pid_t       pid;
 };
 
-struct BROADCAST {
-    
+struct SHM {
+
 };
 
 void showSymbol(int sockfd);
@@ -58,15 +58,18 @@ int public_pipes[101][2] = { -1 };
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
-static void master_int_handler(int signo) {
+int is_master = 1;
+static void intrupt_handler(int signo) {
     if (shmid_user > 0) {
-        printf("Detaching shared memory...\n");
-        if (shmdt(users) < 0)
+        printf("[%d] Detaching shared memory...\n", getpid());
+        if (users != NULL && shmdt(users) < 0)
             err_sys("shmdt");
-        printf("Removing shared memory...\n");
-        shmctl(shmid_user, IPC_RMID, NULL);
+
+        if (is_master) {
+            printf("[%d] Master is removing shared memory...\n", getpid());
+            shmctl(shmid_user, IPC_RMID, NULL);
+        }
     }
-    
     exit(0);
 }
 
@@ -84,8 +87,8 @@ int main() {
     
     bzero(users, MAX_USER * sizeof(struct USER));
 
-    if (signal(SIGINT, master_int_handler) == SIG_ERR)
-        err_sys("Setting master signal SIGINT");
+    if (signal(SIGINT, intrupt_handler) == SIG_ERR)
+        err_sys("Setting signal SIGINT");
 
     //chdir("/Users/jerry/Downloads/ras");
     memset(public_pipes, -1, sizeof(public_pipes));
@@ -115,6 +118,7 @@ int main() {
             Close(connfd);
         } else if (child_pid == 0) {
             /* child */
+            is_master = 0;
             Close(listenfd);
             Writen(connfd, welcome, sizeof(welcome) - 1);
             struct USER *user = set_new_user(&cliaddr);
@@ -122,7 +126,7 @@ int main() {
             receive_cmd(user, connfd);
             clear_user(user);
             Close(connfd);
-            exit(EXIT_SUCCESS);
+            raise(SIGINT);
         }
     }
     return 0;
