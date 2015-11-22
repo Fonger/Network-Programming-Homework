@@ -25,6 +25,7 @@
 #define TRUE 1
 #define FALSE 0
 #define MAX_USER 30
+#define MAX_CHAT 2000
 
 struct USER {
     int         id;
@@ -32,10 +33,7 @@ struct USER {
     char        ip[INET6_ADDRSTRLEN];
     int         port;
     pid_t       pid;
-};
-
-struct SHM {
-
+    char        message[MAX_CHAT];
 };
 
 void showSymbol(int sockfd);
@@ -54,42 +52,79 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
 int shmid_user;
 key_t shm_key_user = 0x19931009;
 struct USER *users;
+
+int shmid_public_msg;
+key_t shm_key_public_msg = 0x19931010;
+char *public_msg;
+
 int public_pipes[101][2] = { -1 };
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
-int is_master = 1;
+int child_connfd = -1;
+
 static void intrupt_handler(int signo) {
     if (shmid_user > 0) {
-        printf("[%d] Detaching shared memory...\n", getpid());
+        printf("[%d] Detaching shared memory of users...\n", getpid());
         if (users != NULL && shmdt(users) < 0)
-            err_sys("shmdt");
-
-        if (is_master) {
-            printf("[%d] Master is removing shared memory...\n", getpid());
+            err_sys("shmdt users");
+        
+        /* if master */
+        if (child_connfd < 0) {
+            printf("[%d] Master is removing shared memory of users...\n", getpid());
             shmctl(shmid_user, IPC_RMID, NULL);
+        }
+    }
+    if (shmid_public_msg > 0) {
+        printf("[%d] Detaching shared memory of public msg...\n", getpid());
+        if (public_msg != NULL && shmdt(public_msg) < 0)
+            err_sys("shmdt public_msg");
+        
+        /* if master */
+        if (child_connfd < 0) {
+            printf("[%d] Master is removing shared memory of public msg...\n", getpid());
+            shmctl(shmid_public_msg, IPC_RMID, NULL);
         }
     }
     exit(0);
 }
 
+static void broadcast_handler(int signo) {
+    if (child_connfd > 0) {
+        Writen(child_connfd, public_msg, strlen(public_msg));
+    }
+}
+
 int main() {
     printf("Hello, World!\n");
     shmid_user = 0;
-    
+
     shmid_user = shmget(shm_key_user, MAX_USER * sizeof(struct USER), SHM_R | SHM_W | IPC_CREAT);
     if (shmid_user < 0)
-        err_sys("shmget");
+        err_sys("shmget users");
     
     users = shmat(shmid_user, NULL, 0);
     if (users < 0)
-        err_sys("shmat");
+        err_sys("shmat users");
     
     bzero(users, MAX_USER * sizeof(struct USER));
 
+    shmid_public_msg = 0;
+    
+    shmid_public_msg = shmget(shm_key_public_msg, MAX_CHAT, SHM_R | SHM_W | IPC_CREAT);
+    if (shmid_public_msg < 0)
+        err_sys("shmget public_msg");
+    
+    public_msg = shmat(shmid_public_msg, NULL, 0);
+    if (public_msg < 0)
+        err_sys("shmat public_msg");
+    
     if (signal(SIGINT, intrupt_handler) == SIG_ERR)
         err_sys("Setting signal SIGINT");
 
+    if (signal(SIGUSR1, broadcast_handler) == SIG_ERR)
+        err_sys("Setting signal SIGUSR1");
+    
     //chdir("/Users/jerry/Downloads/ras");
     memset(public_pipes, -1, sizeof(public_pipes));
     
@@ -118,7 +153,7 @@ int main() {
             Close(connfd);
         } else if (child_pid == 0) {
             /* child */
-            is_master = 0;
+            child_connfd = connfd;
             Close(listenfd);
             Writen(connfd, welcome, sizeof(welcome) - 1);
             struct USER *user = set_new_user(&cliaddr);
@@ -160,16 +195,17 @@ struct USER* get_user(int id) {
 
 void broadcast(const char *format, ...) {
     va_list args;
-    
+
+    va_start(args, format);
+    vsnprintf(public_msg, MAX_CHAT, format, args);
+    va_end(args);
+
     for (int i = 0; i < MAX_USER; i++) {
         if (users[i].id > 0) {
-            va_start(args, format);
-            //vdprintf(users[i].connfd, format, args);
-            va_end(args);
+            kill(users[i].pid, SIGUSR1);
         }
     }
 }
-
 
 int receive_cmd(struct USER *user, int connfd)
 {
