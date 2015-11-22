@@ -44,7 +44,7 @@ struct USER* get_user(int connfd);
 char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
 
 struct USER users[30];
-int public_pipes[101][2] = { -1 };
+int public_pipes[10000][2] = { -1 };
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
