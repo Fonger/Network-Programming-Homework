@@ -47,7 +47,7 @@ void broadcast(const char *format, ...);
 
 struct USER* get_user(int id);
 
-char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
+char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd, char* fifopath);
 
 int shmid_user;
 key_t shm_key_user = 0x19931009;
@@ -60,6 +60,8 @@ char *public_msg;
 int public_pipes[101][2] = { -1 };
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
+
+char fifo_dir[] = "/tmp/nphw2-0112503/";
 
 int child_connfd = -1;
 struct USER *me;
@@ -136,6 +138,8 @@ int main() {
     
     //chdir("/Users/jerry/Downloads/ras");
     memset(public_pipes, -1, sizeof(public_pipes));
+    
+    mkdir(fifo_dir, S_IRWXU);
     
     int listenfd, connfd;
 
@@ -378,28 +382,38 @@ int receive_cmd()
             int close_fd_errout = 1;
             
             int minus = 0;
-
+            
+            char *fifopath = NULL;
             // Receiving from public pipe only happen in first command
             if (i == 0) {
                 for (int q = 0; q < argc; q++) {
                     if (argv[q][0] == '<') {
                         int pipe_id = atoi(&argv[q][1]);
-                        int *pub_pipe = public_pipes[pipe_id];
+//                        int *pub_pipe = public_pipes[pipe_id];
                         minus++;
+                        
+                        char fifo_path[50];
+                        strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
+                        strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
                         argv[q] = '\0';
-                        if (pub_pipe[1] == -1) {
-                            dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
-                            return 0;
-                        }
-                        Close(pub_pipe[1]);
-                        pub_pipe[1] = -1;
-                        fd_in = pub_pipe[0];
+                        fd_in = open(fifo_path, O_RDONLY);
+                        
+//                        if (pub_pipe[1] == -1) {
+//                            dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
+//                            return 0;
+//                        }
+//                        Close(pub_pipe[1]);
+//                        pub_pipe[1] = -1;
+                        
+//                        fd_in = pub_pipe[0];
                         
                         broadcast("*** %s (#%d) just received via '%s' ***\n", me->name, me->id, input);
                         break;
                     }
                 }
             }
+            
+            int fifo_pipe[2] = { -1 };
             if (i + 1 < cmdc) {
                 // If there's next command
                 Pipe(in_out_pipe);
@@ -409,7 +423,7 @@ int receive_cmd()
                 // This is last one
                 fd_out = child_connfd;
                 fd_errout = child_connfd;
-                
+
                 for (int q = 0; q < argc; q++) {
                     if (argv[q] == '\0') continue;
                     if (strcmp(argv[q], ">") == 0) {
@@ -419,18 +433,23 @@ int receive_cmd()
                         break;
                     } else if (argv[q][0] == '>') {
                         int pipe_id = atoi(&argv[q][1]);
-                        int *pub_pipe = public_pipes[pipe_id];
+                        
                         minus++;
+                        
+                        char fifo_path[50];
+                        strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
+                        strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
+                        mkfifo(fifo_path, S_IRWXU);
+                        
+                        fifopath = Strdup(fifo_path);
                         argv[q] = '\0';
-                        if (pub_pipe[1] == -1)
-                            Pipe(pub_pipe);
-                        else {
-                            dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
-                            return 0;
-                        }
-                        fd_out = pub_pipe[1];
-                        fd_errout = pub_pipe[1];
-                        close_fd_out = 0;
+//                        if (pub_pipe[1] == -1)
+//                            Pipe(pub_pipe);
+//                        else {
+//                            dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
+//                            return 0;
+//                        }
+
                         broadcast("*** %s (#%d) just piped '%s' ***\n", me->name, me->id, input);
                     } else if (argv[q][0] == '|' && argv[q][1] != '!') {
                         int dest_pipe = parse_number(&argv[q][1]) + current_line;
@@ -479,13 +498,13 @@ int receive_cmd()
             printf("pipe[0]=%d\n", in_out_pipe[0]);
             printf("pipe[1]=%d\n", in_out_pipe[1]);
             
-            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, child_connfd);
+            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, child_connfd, fifopath);
             
             if (close_fd_out && fd_out != child_connfd && fd_out != -1)
                 Close(fd_out);
             if (close_fd_errout && fd_errout != fd_out && fd_errout != child_connfd && fd_errout != -1)
                 Close(fd_errout);
-
+            
             if (exit_code == ERR_CMD_NOT_FOUND) {
                 dprintf(child_connfd, "Unknown command: [%s].\n", argv[0]);
                 unknown_command = 1;
@@ -495,9 +514,8 @@ int receive_cmd()
                     Close(fd_in);
                 fd_in = in_out_pipe[0];
             }
-            
         }
-
+        
         showSymbol(child_connfd);
 
         if (!unknown_command)
@@ -507,8 +525,7 @@ int receive_cmd()
     return 0;
 }
 
-
-char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd) {
+char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd, char *fifopath) {
 
     pid_t child_pid = Fork();
     if (child_pid > 0) { // parent
@@ -518,7 +535,7 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
         
         int status = 0;
         while( (wait( &status ) == -1) && (errno == EINTR) );
-        
+
         if (WIFEXITED(status)) {
             char exit_code = WEXITSTATUS(status);
             printf("Child pid (%d) exit code: %d\n", child_pid, exit_code);
@@ -529,6 +546,17 @@ char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd
         }
         
     } else if (child_pid == 0) { // child
+
+        if (fifopath != NULL) {
+            // Sockfd is no longer used and should be close to prevent hanging;
+            Close(sockfd);
+            pid_t grandchild_pid = Fork();
+            if (grandchild_pid > 0)
+                exit(0);
+            else
+                fd_out = open(fifopath, O_WRONLY);
+        }
+        
         if (fd_in != -1) {
             Dup2(fd_in, STDIN_FILENO);
             Close(fd_in);
