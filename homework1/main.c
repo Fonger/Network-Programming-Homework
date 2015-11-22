@@ -10,10 +10,17 @@
 #include <stdarg.h>
 #include "../lib/unp.h"
 
+
+#include   <sys/types.h>
+#include   <sys/ipc.h>
+#include   <sys/shm.h>
+
+
 #define MAX_BUFF 100000
 #define MAX_LINE 40000
 #define MAX_CMDS 10000
 #define MAX_ARGS 20
+#define MAX_NAME 20
 #define ERR_CMD_NOT_FOUND -5
 #define TRUE 1
 #define FALSE 0
@@ -21,36 +28,66 @@
 
 struct USER {
     int         id;
-    char        *name;
-    char        *path;
-    char        *ip;
+    char        name[MAX_NAME + 1];
+    char        ip[INET6_ADDRSTRLEN];
     int         port;
-    int         pipes[MAX_LINE][2];
-    int         current_line;
-    int         connfd;
+    pid_t       pid;
+};
+
+struct Message {
+    
 };
 
 void showSymbol(int sockfd);
-int receive_cmd(struct USER *user);
+int receive_cmd(struct USER *user, int connfd);
 int parse_cmd(char input[], char *out_cmd[]);
 int parse_argv(char input[], char *out_argv[]);
 int parse_number(char input[]);
-struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr);
+struct USER* set_new_user(struct sockaddr_in *cliaddr);
 void clear_user(struct USER* user);
 void broadcast(const char *format, ...);
 
-struct USER* get_user(int connfd);
+struct USER* get_user(int id);
 
 char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
 
-struct USER users[30];
+int shmid_user;
+key_t shm_key_user = 0x19931009;
+struct USER *users;
 int public_pipes[101][2] = { -1 };
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
+static void master_int_handler(int signo) {
+    if (shmid_user > 0) {
+        printf("Detaching shared memory...\n");
+        if (shmdt(users) < 0)
+            err_sys("shmdt");
+        printf("Removing shared memory...\n");
+        shmctl(shmid_user, IPC_RMID, NULL);
+    }
+    
+    exit(0);
+}
+
 int main() {
     printf("Hello, World!\n");
-    chdir("/Users/jerry/Downloads/ras");
+    shmid_user = 0;
+    
+    shmid_user = shmget(shm_key_user, MAX_USER * sizeof(struct USER), SHM_R | SHM_W | IPC_CREAT);
+    if (shmid_user < 0)
+        err_sys("shmget");
+    
+    users = shmat(shmid_user, NULL, 0);
+    if (users < 0)
+        err_sys("shmat");
+    
+    bzero(users, MAX_USER * sizeof(struct USER));
+
+    if (signal(SIGINT, master_int_handler) == SIG_ERR)
+        err_sys("Setting master signal SIGINT");
+
+    //chdir("/Users/jerry/Downloads/ras");
     memset(public_pipes, -1, sizeof(public_pipes));
     
     int listenfd, connfd;
@@ -75,33 +112,31 @@ int main() {
         
         pid_t child_pid = Fork();
         if (child_pid > 0) {
-
+            Close(connfd);
         } else if (child_pid == 0) {
             /* child */
             Close(listenfd);
             Writen(connfd, welcome, sizeof(welcome) - 1);
-            struct USER *user = set_new_user(connfd, &cliaddr);
-            receive_cmd(user);
+            struct USER *user = set_new_user(&cliaddr);
+            printf("new user id=%d\n", user->id);
+            receive_cmd(user, connfd);
+            clear_user(user);
+            Close(connfd);
             exit(EXIT_SUCCESS);
         }
-        Close(connfd);
     }
-
     return 0;
 }
 
-struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
+struct USER* set_new_user(struct sockaddr_in *cliaddr) {
     for (int i = 0; i < MAX_USER; i++) {
         struct USER* user = &users[i];
         if (user->id == 0) {
             user->id = i + 1;
-            user->connfd = connfd;
-            user->ip = Strdup(inet_ntoa(cliaddr->sin_addr));
+            user->pid = getpid();
             user->port = cliaddr->sin_port;
-            user->current_line = 0;
-            user->path = Strdup("/Users/jerry/Downloads/ras/bin:/bin:bin:.");
-            user->name = Strdup("(no name)");
-            memset(user->pipes, -1, sizeof(user->pipes));
+            strcpy(user->ip, inet_ntoa(cliaddr->sin_addr));
+            strcpy(user->name, "(no name)");
             return user;
         }
     }
@@ -110,14 +145,11 @@ struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
 
 void clear_user(struct USER* user) {
     user->id = 0;
-    free(user->ip);
-    free(user->path);
-    free(user->name);
 }
 
-struct USER* get_user(int connfd) {
+struct USER* get_user(int id) {
     for (int i = 0; i < MAX_USER; i++)
-        if (users[i].connfd == connfd)
+        if (users[i].id == id)
             return &users[i];
     return NULL;
 }
@@ -128,26 +160,30 @@ void broadcast(const char *format, ...) {
     for (int i = 0; i < MAX_USER; i++) {
         if (users[i].id > 0) {
             va_start(args, format);
-            vdprintf(users[i].connfd, format, args);
+            //vdprintf(users[i].connfd, format, args);
             va_end(args);
         }
     }
 }
 
 
-int receive_cmd(struct USER *user)
+int receive_cmd(struct USER *user, int connfd)
 {
+    setenv("PATH", "/Users/jerry/Downloads/ras/bin:/bin:bin:.", TRUE);
+
+    ssize_t     n = 0;
+    char        buf[MAX_BUFF];
+    int         pos;
+    int         unknown_command = 0;
+    int         pipes[MAX_LINE][2];
+    int         current_line;
+    
+    memset(pipes, -1, sizeof(pipes));
+
     for(;;) {
-        ssize_t     n = 0;
-        char        buf[MAX_BUFF];
-
-        setenv("PATH", user->path, TRUE);
-
-        int pos = 0;
-        int unknown_command = 0;
-        
+        pos = 0;
         do {
-            n = Read(user->connfd, &buf[pos], MAX_BUFF - pos);
+            n = Read(connfd, &buf[pos], MAX_BUFF - pos);
             pos += n;
         } while (buf[pos - 1] != '\n');
         buf[pos] = '\0';
@@ -161,12 +197,12 @@ int receive_cmd(struct USER *user)
         
         char *cmdv[MAX_CMDS];
         int cmdc = parse_cmd(buf, cmdv);
-        printf("line: %d\n unknwon: %d\n", user->current_line, unknown_command);
-        int fd_in = user->pipes[user->current_line][0];
+        printf("line: %d\n unknwon: %d\n", current_line, unknown_command);
+        int fd_in = pipes[current_line][0];
         
-        if (user->pipes[user->current_line][1] != -1 && !unknown_command) {
-            Close(user->pipes[user->current_line][1]);
-            user->pipes[user->current_line][1] = -1;
+        if (pipes[current_line][1] != -1 && !unknown_command) {
+            Close(pipes[current_line][1]);
+            pipes[current_line][1] = -1;
         }
         
         unknown_command = 0;
@@ -192,32 +228,28 @@ int receive_cmd(struct USER *user)
             
             if (strcmp(argv[0], "printenv") == 0) {
                 for (int j = 1; j < argc; j++)
-                    dprintf(user->connfd, "%s=%s\n", argv[j], getenv(argv[j]));
+                    dprintf(connfd, "%s=%s\n", argv[j], getenv(argv[j]));
                 break;
             }
             
             if (strcmp(argv[0], "setenv") == 0) {
-                if (argc == 3) {
+                if (argc == 3)
                     setenv(argv[1], argv[2], TRUE);
-                    if (strcmp(argv[1], "PATH") == 0) {
-                        user->path = Strdup(argv[2]);
-                    }
-                }
                 else
-                    dprintf(user->connfd, "usage: setenv KEY VALIE\n");
+                    dprintf(connfd, "usage: setenv KEY VALIE\n");
                 break;
             }
             
             if (strcmp(argv[0], "who") == 0) {
-                dprintf(user->connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
+                dprintf(connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
                 for (int b = 0; b < MAX_USER; b++) {
                     if (users[b].id > 0) {
-                        dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n",
+                        dprintf(connfd, "%d\t%s\t%s/%d\t%s\n",
                                 users[b].id,
                                 users[b].name,
                                 users[b].ip,
                                 users[b].port,
-                                users[b].connfd == user->connfd ? "<-me":"");
+                                users[b].id == user->id ? "<-me":"");
                     }
                 }
                 break;
@@ -225,7 +257,7 @@ int receive_cmd(struct USER *user)
             
             if (strcmp(argv[0], "name") == 0) {
                 if (argc < 2) {
-                    dprintf(user->connfd, "usage: name (name)\n");
+                    dprintf(connfd, "usage: name (name)\n");
                     break;
                 }
                 
@@ -235,21 +267,23 @@ int receive_cmd(struct USER *user)
                 for (int b = 0; b < MAX_USER; b++) {
                     if (users[b].id > 0) {
                         if (strcmp(argv[1], users[b].name) == 0) {
-                            dprintf(user->connfd, "*** User '%s' already exists. ***\n", argv[1]);
+                            dprintf(connfd, "*** User '%s' already exists. ***\n", argv[1]);
                             free(input);
                             return 0;
                         }
                     }
                 }
-                free(user->name);
-                user->name = Strdup(argv[1]);
+                size_t namelen = strlen(argv[1]);
+                if (namelen > MAX_NAME)
+                    argv[1][MAX_NAME] = '\0';
+                strcpy(user->name, argv[1]);
                 broadcast("*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
                 break;
             }
             
             if (strcmp(argv[0], "yell") == 0) {
                 if (argc < 2) {
-                    dprintf(user->connfd, "usage: yell (message)\n");
+                    dprintf(connfd, "usage: yell (message)\n");
                     break;
                 }
                 
@@ -262,7 +296,7 @@ int receive_cmd(struct USER *user)
             
             if (strcmp(argv[0], "tell") == 0) {
                 if (argc < 3) {
-                    dprintf(user->connfd, "usage: tell (client id) (message)\n");
+                    dprintf(connfd, "usage: tell (client id) (message)\n");
                     break;
                 }
                 for (int j = 3; j < argc; j++)
@@ -270,11 +304,11 @@ int receive_cmd(struct USER *user)
                 
                 int dest_user_id = atoi(argv[1]);
                 struct USER* dest_user = &users[dest_user_id - 1];
-                
-                if (dest_user->id > 0)
-                    dprintf(dest_user->connfd, "*** %s told you ***: %s\n", user->name, argv[2]);
-                else
-                    dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
+//                
+//                if (dest_user->id > 0)
+//                    dprintf(dest_user->connfd, "*** %s told you ***: %s\n", user->name, argv[2]);
+//                else
+//                    dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
                 break;
             }
             
@@ -296,7 +330,7 @@ int receive_cmd(struct USER *user)
                         minus++;
                         argv[q] = '\0';
                         if (pub_pipe[1] == -1) {
-                            dprintf(user->connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
+                            dprintf(connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
                             return 0;
                         }
                         Close(pub_pipe[1]);
@@ -315,8 +349,8 @@ int receive_cmd(struct USER *user)
                 fd_errout = in_out_pipe[1];
             } else {
                 // This is last one
-                fd_out = user->connfd;
-                fd_errout = user->connfd;
+                fd_out = connfd;
+                fd_errout = connfd;
                 
                 for (int q = 0; q < argc; q++) {
                     if (argv[q] == '\0') continue;
@@ -333,30 +367,30 @@ int receive_cmd(struct USER *user)
                         if (pub_pipe[1] == -1)
                             Pipe(pub_pipe);
                         else {
-                            dprintf(user->connfd, "*** Error: the pipe #%d already exists. ***\n%% ", pipe_id);
+                            dprintf(connfd, "*** Error: the pipe #%d already exists. ***\n%% ", pipe_id);
                             return 0;
                         }
                         fd_out = pub_pipe[1];
                         close_fd_out = 0;
                         broadcast("*** %s (#%d) just piped '%s' ***\n", user->name, user->id, input);
                     } else if (argv[q][0] == '|' && argv[q][1] != '!') {
-                        int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
+                        int dest_pipe = parse_number(&argv[q][1]) + current_line;
                         printf("dest_pipe std = %d\n", dest_pipe);
-                        if (user->pipes[dest_pipe][1] == -1)
-                            Pipe(user->pipes[dest_pipe]);
-                        fd_out = user->pipes[dest_pipe][1];
+                        if (pipes[dest_pipe][1] == -1)
+                            Pipe(pipes[dest_pipe]);
+                        fd_out = pipes[dest_pipe][1];
                         close_fd_out = 0;
                         
                         argv[q] = '\0';
                         minus++;
                     } else if (argv[q][0] == '!' && argv[q][1] != '|') {
 
-                        int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
+                        int dest_pipe = parse_number(&argv[q][1]) + current_line;
                         printf("dest_pipe err = %d\n", dest_pipe);
                         
-                        if (user->pipes[dest_pipe][1] == -1)
-                            Pipe(user->pipes[dest_pipe]);
-                        fd_errout = user->pipes[dest_pipe][1];
+                        if (pipes[dest_pipe][1] == -1)
+                            Pipe(pipes[dest_pipe]);
+                        fd_errout = pipes[dest_pipe][1];
                         close_fd_errout = 0;
 
                         argv[q] = '\0';
@@ -365,14 +399,14 @@ int receive_cmd(struct USER *user)
                                (argv[q][0] == '!' && argv[q][1] == '|') ||
                                (argv[q][0] == '|' && argv[q][1] == '!')) {
 
-                        int dest_pipe = atoi(&argv[q][2]) + user->current_line;
+                        int dest_pipe = atoi(&argv[q][2]) + current_line;
                         printf("dest_pipe std+err = %d\n", dest_pipe);
                         
-                        if (user->pipes[dest_pipe][1] == -1)
-                            Pipe(user->pipes[dest_pipe]);
+                        if (pipes[dest_pipe][1] == -1)
+                            Pipe(pipes[dest_pipe]);
 
-                        fd_out = user->pipes[dest_pipe][1];
-                        fd_errout = user->pipes[dest_pipe][1];
+                        fd_out = pipes[dest_pipe][1];
+                        fd_errout = pipes[dest_pipe][1];
                         
                         
                         argv[q] = '\0';
@@ -386,15 +420,15 @@ int receive_cmd(struct USER *user)
             printf("pipe[0]=%d\n", in_out_pipe[0]);
             printf("pipe[1]=%d\n", in_out_pipe[1]);
             
-            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, user->connfd);
+            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, connfd);
             
-            if (close_fd_out && fd_out != user->connfd && fd_out != -1)
+            if (close_fd_out && fd_out != connfd && fd_out != -1)
                 Close(fd_out);
-            if (close_fd_errout && fd_errout != fd_out && fd_errout != user->connfd && fd_errout != -1)
+            if (close_fd_errout && fd_errout != fd_out && fd_errout != connfd && fd_errout != -1)
                 Close(fd_errout);
 
             if (exit_code == ERR_CMD_NOT_FOUND) {
-                dprintf(user->connfd, "Unknown command: [%s].\n", argv[0]);
+                dprintf(connfd, "Unknown command: [%s].\n", argv[0]);
                 unknown_command = 1;
                 break;
             } else {
@@ -405,10 +439,10 @@ int receive_cmd(struct USER *user)
             
         }
 
-        showSymbol(user->connfd);
+        showSymbol(connfd);
 
         if (!unknown_command)
-            user->current_line++;
+            current_line++;
         free(input);
     }
     return 0;
