@@ -26,6 +26,7 @@
 #define FALSE 0
 #define MAX_USER 30
 #define MAX_CHAT 2000
+#define MAX_PUBLIC_PIPE 100
 
 struct USER {
     int         id;
@@ -49,15 +50,17 @@ struct USER* get_user(int id);
 
 char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd, char* fifopath);
 
-int shmid_user;
+int shmid_user = 0;
 key_t shm_key_user = 0x19931009;
-struct USER *users;
+struct USER *users = NULL;
 
-int shmid_public_msg;
+int shmid_public_msg = 0;
 key_t shm_key_public_msg = 0x19931010;
-char *public_msg;
+char *public_msg = NULL;
 
-int public_pipes[101][2] = { -1 };
+int shmid_public_pipes = 0;
+key_t shm_key_public_pipes = 0x19931011;
+int *public_pipes = NULL;
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
@@ -89,6 +92,17 @@ static void intrupt_handler(int signo) {
             shmctl(shmid_public_msg, IPC_RMID, NULL);
         }
     }
+    if (shmid_public_pipes > 0) {
+        printf("[%d] Detaching shared memory of public pipes...\n", getpid());
+        if (public_pipes != NULL && shmdt(public_pipes) < 0)
+            err_sys("shmdt public_pipes");
+        
+        /* if master */
+        if (child_connfd < 0) {
+            printf("[%d] Master is removing shared memory of public pipes...\n", getpid());
+            shmctl(shmid_public_pipes, IPC_RMID, NULL);
+        }
+    }
     exit(0);
 }
 
@@ -105,27 +119,32 @@ static void tell_handler(int signo) {
 }
 int main() {
     printf("Hello, World!\n");
-    shmid_user = 0;
 
     shmid_user = shmget(shm_key_user, MAX_USER * sizeof(struct USER), SHM_R | SHM_W | IPC_CREAT);
     if (shmid_user < 0)
         err_sys("shmget users");
-    
     users = shmat(shmid_user, NULL, 0);
     if (users < 0)
         err_sys("shmat users");
     
     bzero(users, MAX_USER * sizeof(struct USER));
 
-    shmid_public_msg = 0;
-    
+
     shmid_public_msg = shmget(shm_key_public_msg, MAX_CHAT, SHM_R | SHM_W | IPC_CREAT);
     if (shmid_public_msg < 0)
         err_sys("shmget public_msg");
-    
     public_msg = shmat(shmid_public_msg, NULL, 0);
     if (public_msg < 0)
         err_sys("shmat public_msg");
+
+    shmid_public_pipes = shmget(shm_key_public_pipes, MAX_PUBLIC_PIPE * sizeof(int), SHM_R | SHM_W | IPC_CREAT);
+    if (shmid_public_pipes < 0)
+        err_sys("shmget public_pipes");
+    public_pipes = shmat(shmid_public_pipes, NULL, 0);
+    if (public_pipes < 0)
+        err_sys("shmat public_pipes");
+
+    memset(public_pipes, -1, MAX_PUBLIC_PIPE * sizeof(int));
     
     if (signal(SIGINT, intrupt_handler) == SIG_ERR)
         err_sys("Setting signal SIGINT");
@@ -137,7 +156,6 @@ int main() {
         err_sys("Setting signal SIGUSR2");
     
     //chdir("/Users/jerry/Downloads/ras");
-    memset(public_pipes, -1, sizeof(public_pipes));
     
     mkdir(fifo_dir, S_IRWXU);
     
@@ -223,7 +241,7 @@ void broadcast(const char *format, ...) {
     va_end(args);
 
     for (int i = 0; i < MAX_USER; i++) {
-        if (users[i].id > 0) {
+        if (users[i].pid > 0) {
             kill(users[i].pid, SIGUSR1);
         }
     }
@@ -243,6 +261,8 @@ int receive_cmd()
     memset(pipes, -1, sizeof(pipes));
 
     for(;;) {
+        
+    again:
         pos = 0;
         do {
             n = Read(child_connfd, &buf[pos], MAX_BUFF - pos);
@@ -331,7 +351,7 @@ int receive_cmd()
                         if (strcmp(argv[1], users[b].name) == 0) {
                             dprintf(child_connfd, "*** User '%s' already exists. ***\n%% ", argv[1]);
                             free(input);
-                            return 0;
+                            goto again;
                         }
                     }
                 }
@@ -344,6 +364,7 @@ int receive_cmd()
             if (strcmp(argv[0], "yell") == 0) {
                 if (argc < 2) {
                     dprintf(child_connfd, "usage: yell (message)\n");
+                    free(input);
                     break;
                 }
                 
@@ -367,6 +388,7 @@ int receive_cmd()
                 struct USER* dest_user = get_user(dest_user_id);
                 if (dest_user == NULL) {
                     dprintf(child_connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
+                    free(input);
                 } else {
                     snprintf(dest_user->msg, sizeof(dest_user->msg), "*** %s told you ***: %s\n", me->name, argv[2]);
                     kill(dest_user->pid, SIGUSR2);
@@ -389,31 +411,30 @@ int receive_cmd()
                 for (int q = 0; q < argc; q++) {
                     if (argv[q][0] == '<') {
                         int pipe_id = atoi(&argv[q][1]);
-//                        int *pub_pipe = public_pipes[pipe_id];
                         minus++;
                         
-                        char fifo_path[50];
-                        strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
-                        strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
+                        for (int s = 0; s < MAX_PUBLIC_PIPE; s++) {
+                            if (public_pipes[s] == pipe_id) {
+                                char fifo_path[50];
+                                strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
+                                strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
+                                fd_in = open(fifo_path, O_RDONLY);
+                                public_pipes[s] = -1;
+                                goto success;
+                            }
+                        }
+                        
+                        dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
+                        free(input);
+                        goto again;
+                    success:
                         argv[q] = '\0';
-                        fd_in = open(fifo_path, O_RDONLY);
-                        
-//                        if (pub_pipe[1] == -1) {
-//                            dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
-//                            return 0;
-//                        }
-//                        Close(pub_pipe[1]);
-//                        pub_pipe[1] = -1;
-                        
-//                        fd_in = pub_pipe[0];
-                        
                         broadcast("*** %s (#%d) just received via '%s' ***\n", me->name, me->id, input);
                         break;
                     }
                 }
             }
             
-            int fifo_pipe[2] = { -1 };
             if (i + 1 < cmdc) {
                 // If there's next command
                 Pipe(in_out_pipe);
@@ -436,6 +457,23 @@ int receive_cmd()
                         
                         minus++;
                         
+                        int empty_pos = -1;
+
+                        for (int s = 0; s < MAX_PUBLIC_PIPE; s++) {
+                            if (public_pipes[s] == pipe_id) {
+                                dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
+                                free(input);
+                                goto again;
+                            } else if (empty_pos == -1 && public_pipes[s] == -1)
+                                empty_pos = s;
+                        }
+                        
+                        if (empty_pos != -1) {
+                            printf("empty pos: %d to %d\n", empty_pos, pipe_id);
+                            public_pipes[empty_pos] = pipe_id;
+                            //TODO: handle pipe full
+                        }
+                        
                         char fifo_path[50];
                         strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
                         strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
@@ -443,12 +481,6 @@ int receive_cmd()
                         
                         fifopath = Strdup(fifo_path);
                         argv[q] = '\0';
-//                        if (pub_pipe[1] == -1)
-//                            Pipe(pub_pipe);
-//                        else {
-//                            dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
-//                            return 0;
-//                        }
 
                         broadcast("*** %s (#%d) just piped '%s' ***\n", me->name, me->id, input);
                     } else if (argv[q][0] == '|' && argv[q][1] != '!') {
