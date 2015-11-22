@@ -299,7 +299,7 @@ int receive_cmd()
             if (strcmp(argv[0], "who") == 0) {
                 dprintf(child_connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
                 for (int b = 0; b < MAX_USER; b++) {
-                    if (users[b].id > 0) {
+                    if (users[b].pid > 0) {
                         dprintf(child_connfd, "%d\t%s\t%s/%d\t%s\n",
                                 users[b].id,
                                 users[b].name,
