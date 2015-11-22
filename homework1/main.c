@@ -169,8 +169,10 @@ int main() {
                 dprintf(connfd, "Sorry, the server is over capicity (%d/%d).\n", MAX_USER, MAX_USER);
                 goto fail;
             }
+            broadcast("*** User '%s' entered from %s/%d. ***\n", me->name, me->ip, me->port);
             printf("new user id=%d\n", me->id);
             receive_cmd();
+            broadcast("*** User '%s' left. ***\n", me->name);
             clear_user();
         fail:
             Close(connfd);
@@ -323,7 +325,7 @@ int receive_cmd()
                 for (int b = 0; b < MAX_USER; b++) {
                     if (users[b].id > 0) {
                         if (strcmp(argv[1], users[b].name) == 0) {
-                            dprintf(child_connfd, "*** User '%s' already exists. ***\n", argv[1]);
+                            dprintf(child_connfd, "*** User '%s' already exists. ***\n%% ", argv[1]);
                             free(input);
                             return 0;
                         }
@@ -386,7 +388,7 @@ int receive_cmd()
                         minus++;
                         argv[q] = '\0';
                         if (pub_pipe[1] == -1) {
-                            dprintf(child_connfd, "*** Error: the pipe #%d does not exist yet. ***\n%% ", pipe_id);
+                            dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
                             return 0;
                         }
                         Close(pub_pipe[1]);
@@ -423,7 +425,7 @@ int receive_cmd()
                         if (pub_pipe[1] == -1)
                             Pipe(pub_pipe);
                         else {
-                            dprintf(child_connfd, "*** Error: the pipe #%d already exists. ***\n%% ", pipe_id);
+                            dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
                             return 0;
                         }
                         fd_out = pub_pipe[1];
