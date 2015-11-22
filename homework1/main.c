@@ -253,6 +253,7 @@ int receive_cmd()
 
     ssize_t     n = 0;
     char        buf[MAX_BUFF];
+    char        input[MAX_BUFF];
     int         pos;
     int         unknown_command = 0;
     int         pipes[MAX_LINE][2];
@@ -270,7 +271,7 @@ int receive_cmd()
         } while (buf[pos - 1] != '\n');
         buf[pos] = '\0';
         
-        char *input = Strdup(buf);
+        strlcpy(input, buf, MAX_BUFF);
         if (input[pos-2] == '\r')
             input[pos-2] = '\0';
         if (input[pos-1] == '\n')
@@ -304,7 +305,6 @@ int receive_cmd()
                 printf("argv[%d] = %s\n", j, argv[j]);
             
             if (strcmp(argv[0], "exit") == 0) {
-                free(input);
                 return -1;
             }
             
@@ -350,7 +350,6 @@ int receive_cmd()
                     if (users[b].id > 0) {
                         if (strcmp(argv[1], users[b].name) == 0) {
                             dprintf(child_connfd, "*** User '%s' already exists. ***\n%% ", argv[1]);
-                            free(input);
                             goto again;
                         }
                     }
@@ -364,7 +363,6 @@ int receive_cmd()
             if (strcmp(argv[0], "yell") == 0) {
                 if (argc < 2) {
                     dprintf(child_connfd, "usage: yell (message)\n");
-                    free(input);
                     break;
                 }
                 
@@ -388,7 +386,6 @@ int receive_cmd()
                 struct USER* dest_user = get_user(dest_user_id);
                 if (dest_user == NULL) {
                     dprintf(child_connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
-                    free(input);
                 } else {
                     snprintf(dest_user->msg, sizeof(dest_user->msg), "*** %s told you ***: %s\n", me->name, argv[2]);
                     kill(dest_user->pid, SIGUSR2);
@@ -425,7 +422,6 @@ int receive_cmd()
                         }
                         
                         dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
-                        free(input);
                         goto again;
                     success:
                         argv[q] = '\0';
@@ -462,7 +458,6 @@ int receive_cmd()
                         for (int s = 0; s < MAX_PUBLIC_PIPE; s++) {
                             if (public_pipes[s] == pipe_id) {
                                 dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
-                                free(input);
                                 goto again;
                             } else if (empty_pos == -1 && public_pipes[s] == -1)
                                 empty_pos = s;
@@ -552,7 +547,6 @@ int receive_cmd()
 
         if (!unknown_command)
             current_line++;
-        free(input);
     }
     return 0;
 }
