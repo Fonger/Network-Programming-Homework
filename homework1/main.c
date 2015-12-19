@@ -10,26 +10,11 @@
 #include <stdarg.h>
 #include "../lib/unp.h"
 
+#define MAX_BUFF 5000
 
-#include   <sys/types.h>
-#include   <sys/ipc.h>
-#include   <sys/shm.h>
-
-
-#define MAX_BUFF 100000
-
-#define ERR_CGI_NOT_FOUND -5
 #define TRUE 1
 #define FALSE 0
 
-
-
-int receive_cmd();
-
-char fork_process(char *cgi, int sockfd);
-
-
-char fifo_dir[] = "/tmp/nphw2-0112503/";
 int main() {
     printf("Hello, World!\n");
     
@@ -76,45 +61,37 @@ int main() {
                 pos += n;
             } while (buf[pos - 1] != '\n');
             buf[pos] = '\0';
+            
+            
+            char *url;
+            char *method;
+            method = strtok(buf, " ");
+            url = strtok(NULL, " ");
+
+            
+            //GET /test?qq=123 HTTP/1.1
+            
+            char *route;
+            route = strtok(url, "?");
+            
+            char *cgi = route + 1;
+            
+            char *querystring;
+            querystring = strtok(NULL, "");
+
+            printf("url: %s\n", url);
+            printf("method: %s\n", method);
+            printf("route: %s\n", route);
+            printf("cgi: %s\n", cgi);
+            printf("querystring: %s\n", querystring);
 
             Dup2(connfd, STDOUT_FILENO);
-            printf("HTTP/1.1 200 OK\nContent-Type: text/html\n\n<b>helloworld</b>");
+            setenv("REQUEST_METHOD", method, TRUE);
+            setenv("QUERY_STRING", querystring, TRUE);
             Close(connfd);
             
             exit(0);
         }
-    }
-    return 0;
-}
-
-char fork_process(char *cgi, int sockfd) {
-
-    pid_t child_pid = Fork();
-    if (child_pid > 0) { // parent
-
-        printf("Child spawn with pid: %d\n", child_pid);
-        
-        int status = 0;
-        while( (wait( &status ) == -1) && (errno == EINTR) );
-
-        if (WIFEXITED(status)) {
-            char exit_code = WEXITSTATUS(status);
-            printf("Child pid (%d) exit code: %d\n", child_pid, exit_code);
-            return exit_code;
-        } else {
-            printf("Child pid (%d) crash status: %x\n", child_pid, status);
-            return 0;
-        }
-        
-    } else if (child_pid == 0) { // child
-
-        Dup2(sockfd, STDOUT_FILENO);
-        Close(sockfd);
-        execl(cgi, cgi, NULL);
-        
-        exit(ERR_CGI_NOT_FOUND);
-    } else {
-        err_sys("fork failed");
     }
     return 0;
 }
