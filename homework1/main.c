@@ -48,9 +48,11 @@ int public_pipes[10000][2] = { -1 };
 
 char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
 
+struct USER *being_kicked = NULL;
+
 int main() {
     printf("Hello, World!\n");
-    chdir("/Users/jerry/Downloads/ras");
+    //chdir("/Users/jerry/Downloads/ras");
     memset(public_pipes, -1, sizeof(public_pipes));
     
     int listenfd, connfd;
@@ -97,7 +99,8 @@ int main() {
         for (int fd = 3; fd<nfds; fd++) {
             if (fd != listenfd && FD_ISSET(fd, &rfds)) {
                 struct USER *user = get_user(fd);
-                if (receive_cmd(user) == -1) { //exit
+                int result = receive_cmd(user);
+                if (result == -1) { //exit
                     // TODO: update nfds
 
                     broadcast("*** User '%s' left. ***\n", user->name);
@@ -105,6 +108,12 @@ int main() {
                     clear_user(user);
                     Close(fd);
                     FD_CLR(fd, &afds);
+                } else if (result == -2) { //kick
+                    broadcast("*** %s(%d) is kicked by %s(%d)\n", being_kicked->name, being_kicked->id, user->name, user->id);
+                    clear_user(being_kicked);
+                    Close(being_kicked->connfd);
+                    FD_CLR(being_kicked->connfd, &afds);
+                    being_kicked = NULL;
                 }
             }
         }
@@ -119,10 +128,10 @@ struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
         if (user->id == 0) {
             user->id = i + 1;
             user->connfd = connfd;
-            user->ip = Strdup(inet_ntoa(cliaddr->sin_addr));
-            user->port = cliaddr->sin_port;
+            user->ip = Strdup("CGILAB");
+            user->port = 511;
             user->current_line = 0;
-            user->path = Strdup("/Users/jerry/Downloads/ras/bin:/bin:bin:.");
+            user->path = Strdup("bin:.");
             user->name = Strdup("(no name)");
             memset(user->pipes, -1, sizeof(user->pipes));
             return user;
@@ -137,7 +146,6 @@ void clear_user(struct USER* user) {
     free(user->path);
     free(user->name);
 }
-
 struct USER* get_user(int connfd) {
     for (int i = 0; i < MAX_USER; i++)
         if (users[i].connfd == connfd)
@@ -299,7 +307,24 @@ int receive_cmd(struct USER *user)
                 dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
             break;
         }
-        
+        if (strcmp(argv[0], "kick") == 0) {
+            if (argc != 2) {
+                dprintf(user->connfd, "usage: kick (user id)\n");
+                break;
+            }
+            
+            int dest_user_id = atoi(argv[1]);
+            struct USER* dest_user = &users[dest_user_id - 1];
+            
+            if (dest_user->id > 0) {
+                being_kicked = dest_user;
+                return -2;
+            }
+            else
+                dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
+            break;
+            
+        }
         int fd_out;
         int fd_errout;
         int in_out_pipe[2];
