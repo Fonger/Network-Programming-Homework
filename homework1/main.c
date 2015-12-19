@@ -15,10 +15,13 @@
 #define TRUE 1
 #define FALSE 0
 
+void bad_request();
+void home_page();
+
 int main() {
     printf("Hello, World!\n");
     
-    //chdir("/Users/jerry/Downloads/ras");
+    chdir("/Users/Fonger/Desktop/HW3 (2)/server_file");
     
     int listenfd, connfd;
 
@@ -62,37 +65,56 @@ int main() {
             } while (buf[pos - 1] != '\n');
             buf[pos] = '\0';
             
-            
+            Dup2(connfd, STDOUT_FILENO);
+            Close(connfd);
+
             char *url;
             char *method;
             method = strtok(buf, " ");
+            
+            if (*method == '\0')
+                bad_request();
+            
             url = strtok(NULL, " ");
-
+            
+            if (url == NULL || *url == '\0')
+                bad_request();
             
             //GET /test?qq=123 HTTP/1.1
             
             char *route;
             route = strtok(url, "?");
             
+            if (route == NULL || *route == '\0')
+                home_page();
+            
             char *cgi = route + 1;
+            
+            if (*cgi == '\0')
+                home_page();
             
             char *querystring;
             querystring = strtok(NULL, "");
-
-            printf("url: %s\n", url);
-            printf("method: %s\n", method);
-            printf("route: %s\n", route);
-            printf("cgi: %s\n", cgi);
-            printf("querystring: %s\n", querystring);
-
-            Dup2(connfd, STDOUT_FILENO);
-            setenv("REQUEST_METHOD", method, TRUE);
-            setenv("QUERY_STRING", querystring, TRUE);
-            Close(connfd);
             
-            exit(0);
+            setenv("REQUEST_METHOD", method, TRUE);
+
+            if (querystring != NULL)
+                setenv("QUERY_STRING", querystring, TRUE);
+
+            printf("HTTP/1.1 200 OK\n");
+            execl(cgi, cgi, NULL);
+            printf("<h1>CGI not found</h1>");
         }
     }
     return 0;
 }
 
+void bad_request() {
+    printf("HTTP/1.1 400 BAD REQUEST\nContent-Type: text/html\n\n<h1>Bad Request</h1>");
+    exit(0);
+}
+
+void home_page() {
+    printf("HTTP/1.1 200 OK\nContent-Type: text/html\n\n<h1>Home Page</h1>");
+    exit(0);
+}
