@@ -19,550 +19,107 @@
 #define FALSE 0
 #define MAX_USER 30
 
-struct USER {
-    int         id;
-    char        *name;
-    char        *path;
-    char        *ip;
-    int         port;
-    int         pipes[MAX_LINE][2];
-    int         current_line;
-    int         connfd;
-};
+#define F_CONNECTING 0
+#define F_READING 1
+#define F_WRITING 2
+#define F_DONE 3
 
-void showSymbol(int sockfd);
-int receive_cmd(struct USER *user);
-int parse_cmd(char input[], char *out_cmd[]);
-int parse_argv(char input[], char *out_argv[]);
-int parse_number(char input[]);
-struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr);
-void clear_user(struct USER* user);
-void broadcast(const char *format, ...);
+typedef struct {
+    int sockfd;
+    int status;
+} Client;
 
-struct USER* get_user(int connfd);
-
-char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd);
-
-struct USER users[30];
-int public_pipes[10000][2] = { -1 };
-
-char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
-
-struct USER *being_kicked = NULL;
+int new_client_fd(char *hostname, ushort port);
 
 int main() {
     printf("Hello, World!\n");
     //chdir("/Users/jerry/Downloads/ras");
-    memset(public_pipes, -1, sizeof(public_pipes));
-    
-    int listenfd, connfd;
 
-    socklen_t clilen;
-    struct sockaddr_in cliaddr, servaddr;
+    fd_set rfds; /* readable file descriptor set */
+    fd_set wfds; /* writable file descriptor set */
+    fd_set rfds_a; /* active read file descriptor set */
+    fd_set wfds_a; /* active write file descriptor set */
     
-    listenfd = Socket(AF_INET, SOCK_STREAM, 0);
+    //int nfds = 4;
+    int nfds = 9;
+    
+    FD_ZERO(&rfds_a);
+    FD_ZERO(&wfds_a);
+    
+    Client clients[5];
+    
+    for (int i = 0; i < 5; i++) {
+        int clientfd = new_client_fd("nplinux3.cs.nctu.edu.tw", 9877);
+        clients[i].sockfd = clientfd;
+        clients[i].status = F_CONNECTING;
+        FD_SET(clientfd, &rfds_a);
+        FD_SET(clientfd, &wfds_a);
+    }
+    
+    for (;;) {
+        /* restore previous selected fds */
+        memcpy(&rfds, &rfds_a, sizeof(rfds));
+        memcpy(&wfds, &wfds_a, sizeof(wfds));
+        
+        Select(nfds, &rfds, &wfds, NULL, NULL);
+        
+        for (int i = 0; i < sizeof(clients); i++) {
+            Client *c = &clients[i];
+            if (c->status == F_CONNECTING &&
+                (FD_ISSET(c->sockfd, &rfds) || FD_ISSET(c->sockfd, &wfds))) {
+
+
+                int error;
+                socklen_t clilen = sizeof(struct sockaddr_in);
+                if (getsockopt(c->sockfd, SOL_SOCKET, SO_ERROR, &error, &clilen) < 0 ||
+                    error != 0) {
+                    fprintf(stderr, "non-blocking connect failed\n");
+                    exit(1);
+                }
+                c->status = F_READING;
+                FD_CLR(c->sockfd, &wfds);
+            } else if (c->status == F_READING && FD_ISSET(c->sockfd, &rfds) ) {
+                char buf[1024];
+                Read(c->sockfd, buf, sizeof(buf));
+                if (i == 0) printf("===%d===\n%s", i, buf);
+                FD_CLR(c->sockfd, &rfds);
+                FD_SET(c->sockfd, &wfds);
+                c->status = F_WRITING;
+            } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
+                if ( i == 0) {
+                    printf("printenv path\n");
+                    Write(c->sockfd, "printenv path\n", 14);
+                }
+                c->status = F_DONE;
+                FD_CLR(c->sockfd, &wfds);
+                FD_CLR(c->sockfd, &rfds);
+            }
+        }
+    }
+    return 0;
+}
+
+
+int new_client_fd(char *hostname, ushort port) {
+    struct sockaddr_in servaddr;
+    
+    int clientfd = Socket(AF_INET, SOCK_STREAM, 0);
+    
+    struct hostent *he = gethostbyname(hostname);
     
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(SERV_PORT);
-    
-    Bind(listenfd, (SA *) &servaddr, sizeof(servaddr));
-    
-    Listen(listenfd, LISTENQ);
-    
-    fd_set rfds; /* read file descriptor set */
-    fd_set afds; /* active file descriptor set */
-    int nfds = 4;
-    FD_ZERO(&afds);
-    FD_SET(listenfd, &afds);
-    
-    for (;;) {
-        memcpy(&rfds, &afds, sizeof(rfds));
+    servaddr.sin_addr = *((struct in_addr *)he->h_addr);
+    servaddr.sin_port = htons(port);
 
-        Select(nfds, &rfds, NULL, NULL, NULL);
-        
-        if (FD_ISSET(listenfd, &rfds)) {
-            clilen = sizeof(cliaddr);
-            connfd = Accept(listenfd, (SA *) &cliaddr, &clilen);
-            FD_SET(connfd, &afds);
+    // Set non-blocking
+    int flags = fcntl(clientfd, F_GETFL, 0);
+    fcntl(clientfd, F_SETFL, flags | O_NONBLOCK);
 
-            if (connfd + 1 > nfds)
-                nfds = connfd + 1;
-
-            Writen(connfd, welcome, sizeof(welcome) - 1);
-
-            struct USER* user = set_new_user(connfd, &cliaddr);
-            
-            broadcast("*** User '%s' entered from %s/%d. ***\n", user->name, user->ip, user->port);
-        }
-        for (int fd = 3; fd<nfds; fd++) {
-            if (fd != listenfd && FD_ISSET(fd, &rfds)) {
-                struct USER *user = get_user(fd);
-                int result = receive_cmd(user);
-                if (result == -1) { //exit
-                    // TODO: update nfds
-
-                    broadcast("*** User '%s' left. ***\n", user->name);
-                    
-                    clear_user(user);
-                    Close(fd);
-                    FD_CLR(fd, &afds);
-                } else if (result == -2) { //kick
-                    broadcast("*** %s(%d) is kicked by %s(%d)\n", being_kicked->name, being_kicked->id, user->name, user->id);
-                    clear_user(being_kicked);
-                    Close(being_kicked->connfd);
-                    FD_CLR(being_kicked->connfd, &afds);
-                    being_kicked = NULL;
-                }
-            }
-        }
+    if(connect(clientfd,(struct sockaddr *)&servaddr,sizeof(servaddr)) == -1) {
+        if (errno != EINPROGRESS)
+            err_sys("Connect failed");
     }
-
-    return 0;
+    return clientfd;
 }
 
-struct USER* set_new_user(int connfd, struct sockaddr_in *cliaddr) {
-    for (int i = 0; i < MAX_USER; i++) {
-        struct USER* user = &users[i];
-        if (user->id == 0) {
-            user->id = i + 1;
-            user->connfd = connfd;
-            user->ip = Strdup("CGILAB");
-            user->port = 511;
-            user->current_line = 0;
-            user->path = Strdup("bin:.");
-            user->name = Strdup("(no name)");
-            memset(user->pipes, -1, sizeof(user->pipes));
-            return user;
-        }
-    }
-    return NULL;
-}
-
-void clear_user(struct USER* user) {
-    user->id = 0;
-    free(user->ip);
-    free(user->path);
-    free(user->name);
-}
-struct USER* get_user(int connfd) {
-    for (int i = 0; i < MAX_USER; i++)
-        if (users[i].connfd == connfd)
-            return &users[i];
-    return NULL;
-}
-
-void broadcast(const char *format, ...) {
-    va_list args;
-    
-    for (int i = 0; i < MAX_USER; i++) {
-        if (users[i].id > 0) {
-            va_start(args, format);
-            vdprintf(users[i].connfd, format, args);
-            va_end(args);
-        }
-    }
-}
-
-
-int receive_cmd(struct USER *user)
-{
-    ssize_t     n = 0;
-    char        buf[MAX_BUFF];
-
-    setenv("PATH", user->path, TRUE);
-
-    int pos = 0;
-    int unknown_command = 0;
-
-    do {
-        n = Read(user->connfd, &buf[pos], MAX_BUFF - pos);
-        pos += n;
-    } while (buf[pos - 1] != '\n');
-    buf[pos] = '\0';
-    
-    char *input = Strdup(buf);
-    if (input[pos-2] == '\r')
-        input[pos-2] = '\0';
-    if (input[pos-1] == '\n')
-        input[pos-1] = '\0';
-
-    
-    char *cmdv[MAX_CMDS];
-    int cmdc = parse_cmd(buf, cmdv);
-    printf("line: %d\n unknwon: %d\n", user->current_line, unknown_command);
-    int fd_in = user->pipes[user->current_line][0];
-    
-    if (user->pipes[user->current_line][1] != -1 && !unknown_command) {
-        Close(user->pipes[user->current_line][1]);
-        user->pipes[user->current_line][1] = -1;
-    }
-    
-    unknown_command = 0;
-    
-    for (int i = 0; i < cmdc; i++) {
-        
-        printf("cmdv[%d] = %s\n", i, cmdv[i]);
-
-        char *argv[MAX_ARGS];
-
-        int argc = parse_argv(cmdv[i], argv);
-        
-        if (argc == 0)
-            continue;
-        
-        for (int j = 0; j < argc; j++)
-            printf("argv[%d] = %s\n", j, argv[j]);
-        
-        if (strcmp(argv[0], "exit") == 0) {
-            free(input);
-            return -1;
-        }
-        
-        if (strcmp(argv[0], "printenv") == 0) {
-            for (int j = 1; j < argc; j++)
-                dprintf(user->connfd, "%s=%s\n", argv[j], getenv(argv[j]));
-            break;
-        }
-        
-        if (strcmp(argv[0], "setenv") == 0) {
-            if (argc == 3) {
-                setenv(argv[1], argv[2], TRUE);
-                if (strcmp(argv[1], "PATH") == 0) {
-                    user->path = Strdup(argv[2]);
-                }
-            }
-            else
-                dprintf(user->connfd, "usage: setenv KEY VALIE\n");
-            break;
-        }
-        
-        if (strcmp(argv[0], "who") == 0) {
-            dprintf(user->connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
-            for (int b = 0; b < MAX_USER; b++) {
-                if (users[b].id > 0) {
-                    dprintf(user->connfd, "%d\t%s\t%s/%d\t%s\n",
-                            users[b].id,
-                            users[b].name,
-                            users[b].ip,
-                            users[b].port,
-                            users[b].connfd == user->connfd ? "<-me":"");
-                }
-            }
-            break;
-        }
-        
-        if (strcmp(argv[0], "name") == 0) {
-            if (argc < 2) {
-                dprintf(user->connfd, "usage: name (name)\n");
-                break;
-            }
-            
-            for (int j = 2; j < argc; j++)
-                *(argv[j] - 1) = ' ';
-            
-            for (int b = 0; b < MAX_USER; b++) {
-                if (users[b].id > 0) {
-                    if (strcmp(argv[1], users[b].name) == 0) {
-                        dprintf(user->connfd, "*** User '%s' already exists. ***\n%% ", argv[1]);
-                        free(input);
-                        return 0;
-                    }
-                }
-            }
-            free(user->name);
-            user->name = Strdup(argv[1]);
-            broadcast("*** User from %s/%d is named '%s'. ***\n", user->ip, user->port, argv[1]);
-            break;
-        }
-        
-        if (strcmp(argv[0], "yell") == 0) {
-            if (argc < 2) {
-                dprintf(user->connfd, "usage: yell (message)\n");
-                break;
-            }
-            
-            for (int j = 2; j < argc; j++)
-                *(argv[j] - 1) = ' ';
-
-            broadcast("*** %s yelled ***: %s\n", user->name, argv[1]);
-            break;
-        }
-        
-        if (strcmp(argv[0], "tell") == 0) {
-            if (argc < 3) {
-                dprintf(user->connfd, "usage: tell (client id) (message)\n");
-                break;
-            }
-            for (int j = 3; j < argc; j++)
-                *(argv[j] - 1) = ' ';
-            
-            int dest_user_id = atoi(argv[1]);
-            struct USER* dest_user = &users[dest_user_id - 1];
-            
-            if (dest_user->id > 0)
-                dprintf(dest_user->connfd, "*** %s told you ***: %s\n", user->name, argv[2]);
-            else
-                dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
-            break;
-        }
-        if (strcmp(argv[0], "kick") == 0) {
-            if (argc != 2) {
-                dprintf(user->connfd, "usage: kick (user id)\n");
-                break;
-            }
-            
-            int dest_user_id = atoi(argv[1]);
-            struct USER* dest_user = &users[dest_user_id - 1];
-            
-            if (dest_user->id > 0) {
-                being_kicked = dest_user;
-                return -2;
-            }
-            else
-                dprintf(user->connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
-            break;
-            
-        }
-        int fd_out;
-        int fd_errout;
-        int in_out_pipe[2];
-
-        int close_fd_out = 1;
-        int close_fd_errout = 1;
-        
-        int minus = 0;
-
-        // Receiving from public pipe only happen in first command
-        if (i == 0) {
-            for (int q = 0; q < argc; q++) {
-                if (argv[q][0] == '<') {
-                    int pipe_id = atoi(&argv[q][1]);
-                    int *pub_pipe = public_pipes[pipe_id];
-                    minus++;
-                    argv[q] = '\0';
-                    if (pub_pipe[1] == -1) {
-                        dprintf(user->connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
-                        return 0;
-                    }
-                    Close(pub_pipe[1]);
-                    pub_pipe[1] = -1;
-                    fd_in = pub_pipe[0];
-                    
-                    broadcast("*** %s (#%d) just received via '%s' ***\n", user->name, user->id, input);
-                    break;
-                }
-            }
-        }
-        if (i + 1 < cmdc) {
-            // If there's next command
-            Pipe(in_out_pipe);
-            fd_out = in_out_pipe[1];
-            fd_errout = in_out_pipe[1];
-        } else {
-            // This is last one
-            fd_out = user->connfd;
-            fd_errout = user->connfd;
-            
-            for (int q = 0; q < argc; q++) {
-                if (argv[q] == '\0') continue;
-                if (strcmp(argv[q], ">") == 0) {
-                    fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                    argv[q] = '\0';
-                    argc = q;
-                    break;
-                } else if (argv[q][0] == '>') {
-                    int pipe_id = atoi(&argv[q][1]);
-                    int *pub_pipe = public_pipes[pipe_id];
-                    minus++;
-                    argv[q] = '\0';
-                    if (pub_pipe[1] == -1)
-                        Pipe(pub_pipe);
-                    else {
-                        dprintf(user->connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
-                        return 0;
-                    }
-                    fd_out = pub_pipe[1];
-                    fd_errout = pub_pipe[1];
-                    close_fd_out = 0;
-                    broadcast("*** %s (#%d) just piped '%s' ***\n", user->name, user->id, input);
-                } else if (argv[q][0] == '|' && argv[q][1] != '!') {
-                    int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
-                    printf("dest_pipe std = %d\n", dest_pipe);
-                    if (user->pipes[dest_pipe][1] == -1)
-                        Pipe(user->pipes[dest_pipe]);
-                    fd_out = user->pipes[dest_pipe][1];
-                    close_fd_out = 0;
-                    
-                    argv[q] = '\0';
-                    minus++;
-                } else if (argv[q][0] == '!' && argv[q][1] != '|') {
-
-                    int dest_pipe = parse_number(&argv[q][1]) + user->current_line;
-                    printf("dest_pipe err = %d\n", dest_pipe);
-                    
-                    if (user->pipes[dest_pipe][1] == -1)
-                        Pipe(user->pipes[dest_pipe]);
-                    fd_errout = user->pipes[dest_pipe][1];
-                    close_fd_errout = 0;
-
-                    argv[q] = '\0';
-                    minus++;
-                } else if (
-                           (argv[q][0] == '!' && argv[q][1] == '|') ||
-                           (argv[q][0] == '|' && argv[q][1] == '!')) {
-
-                    int dest_pipe = atoi(&argv[q][2]) + user->current_line;
-                    printf("dest_pipe std+err = %d\n", dest_pipe);
-                    
-                    if (user->pipes[dest_pipe][1] == -1)
-                        Pipe(user->pipes[dest_pipe]);
-
-                    fd_out = user->pipes[dest_pipe][1];
-                    fd_errout = user->pipes[dest_pipe][1];
-                    
-                    
-                    argv[q] = '\0';
-                    minus++;
-                }
-            }
-        }
-        
-        argc -= minus;
-        
-        printf("pipe[0]=%d\n", in_out_pipe[0]);
-        printf("pipe[1]=%d\n", in_out_pipe[1]);
-        
-        char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, user->connfd);
-        
-        if (close_fd_out && fd_out != user->connfd && fd_out != -1)
-            Close(fd_out);
-        if (close_fd_errout && fd_errout != fd_out && fd_errout != user->connfd && fd_errout != -1)
-            Close(fd_errout);
-
-        if (exit_code == ERR_CMD_NOT_FOUND) {
-            dprintf(user->connfd, "Unknown command: [%s].\n", argv[0]);
-            unknown_command = 1;
-            break;
-        } else {
-            if (fd_in != -1)
-                Close(fd_in);
-            fd_in = in_out_pipe[0];
-        }
-        
-    }
-
-    showSymbol(user->connfd);
-
-    if (!unknown_command)
-        user->current_line++;
-    free(input);
-    return 0;
-}
-
-
-char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd) {
-
-    pid_t child_pid = Fork();
-    if (child_pid > 0) { // parent
-
-        printf("Child spawn with pid: %d\n", child_pid);
-        
-        
-        int status = 0;
-        while( (wait( &status ) == -1) && (errno == EINTR) );
-        
-        if (WIFEXITED(status)) {
-            char exit_code = WEXITSTATUS(status);
-            printf("Child pid (%d) exit code: %d\n", child_pid, exit_code);
-            return exit_code;
-        } else {
-            printf("Child pid (%d) crash status: %x\n", child_pid, status);
-            return 0;
-        }
-        
-    } else if (child_pid == 0) { // child
-        if (fd_in != -1) {
-            Dup2(fd_in, STDIN_FILENO);
-            Close(fd_in);
-        }
-
-        Dup2(fd_out, STDOUT_FILENO);
-        Dup2(fd_errout, STDERR_FILENO);
-        
-        Close(fd_out);
-
-        if (fd_out != fd_errout)
-            Close(fd_errout);
-        
-        execvp(argv[0], argv);
-        
-        exit(ERR_CMD_NOT_FOUND);
-    } else {
-        err_sys("fork failed");
-    }
-    return 0;
-}
-void showSymbol(int sockfd) {
-    Writen(sockfd, "% ", 2);
-}
-
-int parse_cmd(char *input, char *cmd[]) {
-    char    *symbol = " | ";
-    size_t  length   = strlen(input);
-    size_t  offset   = strlen(symbol);
-    
-    if (length == 0)
-        return 0;
-    
-    if (input[length - 1] == '\n') {
-        if (--length == 0) // if only input \n
-            return 0;
-        input[length] = '\0';
-    }
-    
-    
-    int i = 0;
-    cmd[0] = input;
-
-    for (i = 1; (input = strstr(input, symbol)) != NULL; i++) {
-        *(input) = '\0';
-        input += offset;
-        cmd[i] = input;
-    }
-    return i;
-}
-
-int parse_argv(char input[], char *argv[]) {
-    char *delim = " \r\n";
-    
-    char *p = strtok(input, delim);
-    
-    if (p == NULL)
-        return 0;
-    
-    int  argc = 0;
-    argv[argc++] = p;
-    while ((p = strtok(NULL, delim)) != NULL)
-        argv[argc++] = p;
-    argv[argc] = '\0';
-    return argc;
-}
-
-int parse_number(char input[]) {
-    char *delim = "+";
-    
-    char *p = strtok(input, delim);
-    
-    if (p == NULL)
-        return 0;
-    
-    int num = atoi(p);
-
-    while ((p = strtok(NULL, delim)) != NULL) {
-        num += atoi(p);
-    }
-    
-    return num;
-}
