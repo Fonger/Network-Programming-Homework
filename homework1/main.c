@@ -17,6 +17,7 @@
 
 void bad_request();
 void home_page();
+void not_found();
 
 int main() {
     printf("Hello, World!\n");
@@ -82,28 +83,47 @@ int main() {
             
             //GET /test?qq=123 HTTP/1.1
             
-            char *route;
-            route = strtok(url, "?");
+            char *route = strtok(url, "?");
             
             if (route == NULL || *route == '\0')
                 home_page();
             
-            char *cgi = route + 1;
+            route++; // exclude the first '/' character
             
-            if (*cgi == '\0')
+            if (*route == '\0')
                 home_page();
             
             char *querystring;
             querystring = strtok(NULL, "");
-            
-            setenv("REQUEST_METHOD", method, TRUE);
+            char *ext_start = strrchr(route, '.');
 
-            if (querystring != NULL)
-                setenv("QUERY_STRING", querystring, TRUE);
+            if (ext_start == NULL || strncasecmp(ext_start, ".cgi\0", 5) != 0) {
+                
+                if (strncasecmp(ext_start, ".htm", 4) == 0) {
+                    printf("HTTP/1.1 200 OK\n");
+                    printf("Content-Type: text/html\n\n");
+                    
+                    FILE *file = fopen(route, "r");
+                    if (file == NULL)
+                        not_found();
 
-            printf("HTTP/1.1 200 OK\n");
-            execl(cgi, cgi, NULL);
-            printf("<h1>CGI not found</h1>");
+                    int c;
+                    while ((c = getc(file)) != EOF)
+                        putchar(c);
+                    fclose(file);
+                }
+            } else {
+
+                setenv("REQUEST_METHOD", method, TRUE);
+                
+                if (querystring != NULL)
+                    setenv("QUERY_STRING", querystring, TRUE);
+                
+                printf("HTTP/1.1 200 OK\n");
+                execl(route, route, NULL);
+                printf("Content-Type: text/html\n\n<h1>CGI not found</h1>");
+            }
+            exit(0);
         }
     }
     return 0;
@@ -116,5 +136,10 @@ void bad_request() {
 
 void home_page() {
     printf("HTTP/1.1 200 OK\nContent-Type: text/html\n\n<h1>Home Page</h1>");
+    exit(0);
+}
+
+void not_found() {
+    printf("HTTP/1.1 404 NOT FOUND\nContent-Type: text/html\n\n<h1>Not Found</h1>");
     exit(0);
 }
