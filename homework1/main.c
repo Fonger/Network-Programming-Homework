@@ -20,6 +20,7 @@
 #define F_DONE 3
 
 typedef struct {
+    int     index;
     char*   host;
     ushort  port;
     FILE*   batch;
@@ -29,12 +30,14 @@ typedef struct {
 
 int new_client_fd(char *hostname, ushort port);
 Client** parse_query_string(char *querystring);
+void print_html_frame(Client** clients);
+void printc(Client* client, char *format, ...);
 
 int main() {
     chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
 
     printf("Content-Type: text/html\n\n");
-    setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&b1=t1.txt", 1);
+    setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&b1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&b2=t2.txt", 1);
     char *qs = getenv("QUERY_STRING");
     Client* *clients = parse_query_string(qs);
 
@@ -91,15 +94,16 @@ int main() {
             } else if (c->status == F_READING && FD_ISSET(c->sockfd, &rfds) ) {
                 char buf[1024];
                 Read(c->sockfd, buf, sizeof(buf));
-                if (i == 0) printf("===%d===\n%s", i, buf);
+                if (i == 0)
+                    printf("===%d===\n%s", i, buf);
                 FD_CLR(c->sockfd, &rfds);
                 FD_SET(c->sockfd, &wfds);
                 c->status = F_WRITING;
             } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
                 if ( i == 0) {
                     printf("printenv path\n");
-                    Write(c->sockfd, "printenv path\n", 14);
                 }
+                Write(c->sockfd, "printenv path\n", 14);
                 c->status = F_DONE;
                 FD_CLR(c->sockfd, &wfds);
                 FD_CLR(c->sockfd, &rfds);
@@ -163,6 +167,7 @@ Client** parse_query_string(char *querystring) {
         if (clients[i] == NULL) {
             clients[i] = malloc(sizeof(Client));
             bzero(clients[i], sizeof(Client));
+            clients[i]->index = i;
         }
 
         switch (*key) {
@@ -182,4 +187,47 @@ Client** parse_query_string(char *querystring) {
         item = strtok(NULL, "&");
     }
     return clients;
+}
+
+void print_html_frame(Client* *clients) {
+    printf("<html>\n");
+    printf("<head>\n");
+    printf("	<meta http-equiv=\"Content-Type\" content=\"text/html; charset=big5\" />\n");
+    printf("	<title>Network Programming Homework 3</title>\n");
+    printf("</head>\n");
+    printf("<body bgcolor=#336699>\n");
+    printf("	<font face=\"Courier New\" size=2 color=#FFFF99>\n");
+    printf("		<table width=\"800\" border=\"1\">\n");
+    printf("			<tr>\n");
+    
+    for (int i = 0; i < MAX_CLIENT; i++) {
+        Client* client = clients[i];
+        if (client == NULL)
+            continue;
+        printf("		  <td>%s</td>\n", client->host);
+    }
+    printf("			</tr>\n");
+    printf("			<tr>\n");
+
+    for (int i = 0; i < MAX_CLIENT; i++) {
+        Client* client = clients[i];
+        if (client == NULL)
+            continue;
+        printf("			<td valign=\"top\" id=\"m%d\"></td>\n", i);
+    }
+    printf("			</tr>\n");
+    printf("		</table>\n");
+    printf("	</font>\n");
+    printf("</body>\n");
+    printf("</html>\n");
+}
+
+void printc(Client* client, char* format, ...) {
+    va_list args;
+
+    printf("<script>document.all['m%d'].innerHTML += \"", client->index);
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    printf("\";</script>");
 }
