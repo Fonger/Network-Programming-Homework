@@ -28,13 +28,14 @@ typedef struct {
     FILE*   batch;
     int     sockfd;
     int     status;
-    char*   output;
     char*   lastcmd;
 } Client;
 
 int new_client_fd(char *hostname, ushort port);
 Client** parse_query_string(char *querystring);
 void print_html_frame(Client** clients);
+void printc(Client* client, char* content);
+char *str_replace(char *orig, char *rep, char *with);
 
 int main() {
     chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
@@ -70,6 +71,8 @@ int main() {
         FD_SET(clientfd, &wfds_a);
         nclients++;
     }
+    
+    print_html_frame(clients);
     while (nclients > 0) {
         /* restore previous selected fds */
         memcpy(&rfds, &rfds_a, sizeof(rfds));
@@ -100,7 +103,7 @@ int main() {
                 ssize_t rResult;
                 while ((rResult = read(c->sockfd, buf, sizeof(buf))) > 0) {
                     buf[rResult] = '\0';
-                    strcat(c->output, buf);
+                    printc(c, buf);
                 }
 
                 if (rResult < 0) {
@@ -129,7 +132,7 @@ int main() {
                             err_sys("Write cmd failed");
                     }
 
-                    strcat(c->output, cmd);
+                    printc(c, cmd);
 
                     free(cmd);
                     c->lastcmd = NULL;
@@ -144,7 +147,7 @@ int main() {
             }
         }
     }
-    print_html_frame(clients);
+    
     return 0;
 }
 
@@ -203,7 +206,6 @@ Client** parse_query_string(char *querystring) {
             clients[i] = malloc(sizeof(Client));
             bzero(clients[i], sizeof(Client));
             clients[i]->index = i;
-            clients[i]->output = malloc(MAX_OUTPUT);
         }
 
         switch (*key) {
@@ -249,7 +251,6 @@ void print_html_frame(Client* *clients) {
         if (client == NULL)
             continue;
         printf("			<td valign=\"top\" id=\"m%d\">\n", client->index);
-        printf("              <pre>%s</pre>\n", client->output);
         printf("            </td>\n");
     }
     printf("			</tr>\n");
@@ -257,4 +258,65 @@ void print_html_frame(Client* *clients) {
     printf("	</font>\n");
     printf("</body>\n");
     printf("</html>\n");
+}
+
+void printc(Client* client, char* content) {
+
+    char *first, *second, *third, *forth, *final;
+    first = str_replace(content, "<", "&lt;");
+    second = str_replace(first, ">", "&gt;");
+    free(first);
+    third = str_replace(second, "\"", "\\\"");
+    free(second);
+    forth = str_replace(third, "\r\n", "<br>");
+    free(third);
+    final = str_replace(forth, "\n", "<br>");
+
+    printf("<script>document.all['m%d'].innerHTML+=\"%s\";</script>\n", client->index, final);
+    free(final);
+}
+
+// You must free the result if result is non-NULL.
+char *str_replace(char *orig, char *rep, char *with) {
+    char *result; // the return string
+    char *ins;    // the next insert point
+    char *tmp;    // varies
+    ssize_t len_rep;  // length of rep
+    ssize_t len_with; // length of with
+    ssize_t len_front; // distance between rep and end of last rep
+    int count;    // number of replacements
+    
+    if (!orig)
+        return NULL;
+    if (!rep)
+        rep = "";
+    len_rep = strlen(rep);
+    if (!with)
+        with = "";
+    len_with = strlen(with);
+    
+    ins = orig;
+    for (count = 0; (tmp = strstr(ins, rep)); ++count) {
+        ins = tmp + len_rep;
+    }
+    
+    // first time through the loop, all the variable are set correctly
+    // from here on,
+    //    tmp points to the end of the result string
+    //    ins points to the next occurrence of rep in orig
+    //    orig points to the remainder of orig after "end of rep"
+    tmp = result = malloc(strlen(orig) + (len_with - len_rep) * count + 1);
+    
+    if (!result)
+        return NULL;
+    
+    while (count--) {
+        ins = strstr(orig, rep);
+        len_front = ins - orig;
+        tmp = strncpy(tmp, orig, len_front) + len_front;
+        tmp = strcpy(tmp, with) + len_with;
+        orig += len_front + len_rep; // move to next "end of rep"
+    }
+    strcpy(tmp, orig);
+    return result;
 }
