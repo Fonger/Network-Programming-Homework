@@ -10,14 +10,9 @@
 #include <stdarg.h>
 #include "../lib/unp.h"
 
-#define MAX_BUFF 100000
-#define MAX_LINE 40000
-#define MAX_CMDS 10000
-#define MAX_ARGS 20
-#define ERR_CMD_NOT_FOUND -5
+#define MAX_CLIENT 5
 #define TRUE 1
 #define FALSE 0
-#define MAX_USER 30
 
 #define F_CONNECTING 0
 #define F_READING 1
@@ -25,16 +20,27 @@
 #define F_DONE 3
 
 typedef struct {
-    int sockfd;
-    int status;
+    char*   host;
+    ushort  port;
+    FILE*   batch;
+    int     sockfd;
+    int     status;
 } Client;
 
 int new_client_fd(char *hostname, ushort port);
+Client** parse_query_string(char *querystring);
 
 int main() {
-    printf("Hello, World!\n");
-    //chdir("/Users/jerry/Downloads/ras");
+    chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
 
+    printf("Content-Type: text/html\n\n");
+    setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&b1=t1.txt", 1);
+    char *qs = getenv("QUERY_STRING");
+    Client* *clients = parse_query_string(qs);
+
+    if (qs == NULL)
+        printf("<h1>No QUERY_STRING</h1>\n");
+    
     fd_set rfds; /* readable file descriptor set */
     fd_set wfds; /* writable file descriptor set */
     fd_set rfds_a; /* active read file descriptor set */
@@ -46,12 +52,12 @@ int main() {
     FD_ZERO(&rfds_a);
     FD_ZERO(&wfds_a);
     
-    Client clients[5];
-    
-    for (int i = 0; i < 5; i++) {
-        int clientfd = new_client_fd("nplinux3.cs.nctu.edu.tw", 9877);
-        clients[i].sockfd = clientfd;
-        clients[i].status = F_CONNECTING;
+    for (int i = 0; i < MAX_CLIENT; i++) {
+        if (clients[i] == NULL)
+            continue;
+        int clientfd = new_client_fd(clients[i]->host, clients[i]->port);
+        clients[i]->sockfd = clientfd;
+        clients[i]->status = F_CONNECTING;
         FD_SET(clientfd, &rfds_a);
         FD_SET(clientfd, &wfds_a);
     }
@@ -63,8 +69,12 @@ int main() {
         
         Select(nfds, &rfds, &wfds, NULL, NULL);
         
-        for (int i = 0; i < sizeof(clients); i++) {
-            Client *c = &clients[i];
+        for (int i = 0; i < MAX_CLIENT; i++) {
+            Client *c = clients[i];
+
+            if (c == NULL)
+                continue;
+            
             if (c->status == F_CONNECTING &&
                 (FD_ISSET(c->sockfd, &rfds) || FD_ISSET(c->sockfd, &wfds))) {
 
@@ -123,3 +133,53 @@ int new_client_fd(char *hostname, ushort port) {
     return clientfd;
 }
 
+Client** parse_query_string(char *querystring) {
+    char* item = strtok(querystring, "&");
+    
+    Client* *clients = malloc(sizeof(void*) * MAX_CLIENT);
+    bzero(clients, sizeof(*clients) * MAX_CLIENT);
+    
+    if (item == NULL)
+        return NULL;
+    
+    while (item != NULL) {
+        char* ptr;
+        char *key = strtok_r(item, "=", &ptr);
+
+        if (key == NULL || strlen(key) != 2)
+            break;
+        
+        char *val = strtok_r(NULL, "", &ptr);
+        
+        if (val == NULL)
+            break;
+        
+        int clientid = atoi(key + 1);
+        
+        if (clientid == 0 || clientid > 5)
+            break;
+        
+        int i = clientid - 1;
+        if (clients[i] == NULL) {
+            clients[i] = malloc(sizeof(Client));
+            bzero(clients[i], sizeof(Client));
+        }
+
+        switch (*key) {
+            case 'h':
+                clients[i]->host = strndup(val, 100);
+                break;
+            case 'p':
+                clients[i]->port = atoi(val);
+                break;
+            case 'f':
+                clients[i]->batch = fopen(val, "r");
+                break;
+            default:
+                break;
+        }
+        printf("%s=%s\n", key, val);
+        item = strtok(NULL, "&");
+    }
+    return clients;
+}
