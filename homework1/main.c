@@ -28,20 +28,21 @@ typedef struct {
     FILE*   batch;
     int     sockfd;
     int     status;
+    int     dying;
     char*   lastcmd;
 } Client;
 
 int new_client_fd(char *hostname, ushort port);
 Client** parse_query_string(char *querystring);
 void print_html_frame(Client** clients);
-void printc(Client* client, char* content);
+void printc(Client* client, char* content, int bold);
 char *str_replace(char *orig, char *rep, char *with);
 
 int main() {
     chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
 
     printf("Content-Type: text/html\n\n");
-    setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&b1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&b2=t1.txt", 1);
+    //setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&f1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&f2=t5.txt", 1);
     char *qs = getenv("QUERY_STRING");
     Client* *clients = parse_query_string(qs);
 
@@ -101,19 +102,31 @@ int main() {
             } else if (c->status == F_READING && FD_ISSET(c->sockfd, &rfds) ) {
                 char buf[MAX_LINE];
                 ssize_t rResult;
-                while ((rResult = read(c->sockfd, buf, sizeof(buf))) > 0) {
+                if ((rResult = read(c->sockfd, buf, sizeof(buf))) > 0) {
                     buf[rResult] = '\0';
-                    printc(c, buf);
+                    for(int j = 0; j < rResult - 1; j++) { //possible problem
+                        if (c->dying) {
+                            if (c->status != F_DONE) {
+                                c->status = F_DONE;
+                                FD_CLR(c->sockfd, &wfds);
+                                FD_CLR(c->sockfd, &rfds);
+                                nclients--;
+                            }
+                        }
+                        if (buf[j] == '%' && buf[j + 1] == ' ') {
+                            c->status = F_WRITING;
+                            FD_CLR(c->sockfd, &rfds);
+                            FD_SET(c->sockfd, &wfds);
+                            break;
+                        }
+                    }
+                    printc(c, buf, FALSE);
                 }
-
-                if (rResult < 0) {
-                    if (errno != EWOULDBLOCK)
-                        err_sys("read socket failed");
+                else if (rResult < 0) {
+                    if (errno != EWOULDBLOCK) {
+                        perror("read socket failed");
+                    }
                 }
-
-                FD_CLR(c->sockfd, &rfds);
-                FD_SET(c->sockfd, &wfds);
-                c->status = F_WRITING;
             } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
 
                 char* cmd;
@@ -132,14 +145,18 @@ int main() {
                             err_sys("Write cmd failed");
                     }
 
-                    printc(c, cmd);
+                    printc(c, cmd, TRUE);
+                    
+                    if (strncmp(cmd, "exit", 4) == 0)
+                        c->dying = TRUE;
 
                     free(cmd);
                     c->lastcmd = NULL;
                     
                     c->status = F_READING;
                     FD_SET(c->sockfd, &rfds);
-                } else {
+                }
+                else if (c->status != F_DONE) {
                     c->status = F_DONE;
                     FD_CLR(c->sockfd, &wfds);
                     nclients--;
@@ -206,6 +223,7 @@ Client** parse_query_string(char *querystring) {
             clients[i] = malloc(sizeof(Client));
             bzero(clients[i], sizeof(Client));
             clients[i]->index = i;
+            clients[i]->dying = FALSE;
         }
 
         switch (*key) {
@@ -215,7 +233,7 @@ Client** parse_query_string(char *querystring) {
             case 'p':
                 clients[i]->port = atoi(val);
                 break;
-            case 'b':
+            case 'f':
                 clients[i]->batch = fopen(val, "r");
                 break;
             default:
@@ -258,9 +276,10 @@ void print_html_frame(Client* *clients) {
     printf("	</font>\n");
     printf("</body>\n");
     printf("</html>\n");
+    fflush(stdout);
 }
 
-void printc(Client* client, char* content) {
+void printc(Client* client, char* content, int bold) {
 
     char *first, *second, *third, *forth, *final;
     first = str_replace(content, "<", "&lt;");
@@ -272,8 +291,12 @@ void printc(Client* client, char* content) {
     free(third);
     final = str_replace(forth, "\n", "<br>");
 
-    printf("<script>document.all['m%d'].innerHTML+=\"%s\";</script>\n", client->index, final);
+    if (bold)
+        printf("<script>document.all['m%d'].innerHTML+=\"<b>%s</b>\";</script>\n", client->index, final);
+    else
+        printf("<script>document.all['m%d'].innerHTML+=\"%s\";</script>\n", client->index, final);
     free(final);
+    fflush(stdout);
 }
 
 // You must free the result if result is non-NULL.
