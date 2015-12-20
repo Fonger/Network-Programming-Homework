@@ -122,6 +122,8 @@ int main() {
                 serve_file(route, "image/x-icon");
             } else if (strncasecmp(ext, ".woff\0", 6) == 0) {
                 serve_file(route, "application/x-font-woff");
+            } else if (strncasecmp(ext, ".txt\0", 5) == 0) {
+                serve_file(route, "text/plain");
             } else if (strncasecmp(ext, ".cgi\0", 5) == 0){
                 setenv("REQUEST_METHOD", method, TRUE);
                 
