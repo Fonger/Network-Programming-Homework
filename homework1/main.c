@@ -11,6 +11,7 @@
 #include "../lib/unp.h"
 
 #define MAX_CLIENT 5
+#define MAX_OUTPUT 50000
 #define TRUE 1
 #define FALSE 0
 
@@ -26,12 +27,12 @@ typedef struct {
     FILE*   batch;
     int     sockfd;
     int     status;
+    char*   output;
 } Client;
 
 int new_client_fd(char *hostname, ushort port);
 Client** parse_query_string(char *querystring);
 void print_html_frame(Client** clients);
-void printc(Client* client, char *format, ...);
 
 int main() {
     chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
@@ -55,6 +56,8 @@ int main() {
     FD_ZERO(&rfds_a);
     FD_ZERO(&wfds_a);
     
+    int nclients = 0;
+    
     for (int i = 0; i < MAX_CLIENT; i++) {
         if (clients[i] == NULL)
             continue;
@@ -63,9 +66,9 @@ int main() {
         clients[i]->status = F_CONNECTING;
         FD_SET(clientfd, &rfds_a);
         FD_SET(clientfd, &wfds_a);
+        nclients++;
     }
-    
-    for (;;) {
+    while (nclients > 0) {
         /* restore previous selected fds */
         memcpy(&rfds, &rfds_a, sizeof(rfds));
         memcpy(&wfds, &wfds_a, sizeof(wfds));
@@ -94,22 +97,22 @@ int main() {
             } else if (c->status == F_READING && FD_ISSET(c->sockfd, &rfds) ) {
                 char buf[1024];
                 Read(c->sockfd, buf, sizeof(buf));
-                if (i == 0)
-                    printf("===%d===\n%s", i, buf);
+                strcat(c->output, buf);
+                
                 FD_CLR(c->sockfd, &rfds);
                 FD_SET(c->sockfd, &wfds);
                 c->status = F_WRITING;
             } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
-                if ( i == 0) {
-                    printf("printenv path\n");
-                }
+                strcat(c->output, "printenv path\n");
                 Write(c->sockfd, "printenv path\n", 14);
                 c->status = F_DONE;
                 FD_CLR(c->sockfd, &wfds);
                 FD_CLR(c->sockfd, &rfds);
+                nclients--;
             }
         }
     }
+    print_html_frame(clients);
     return 0;
 }
 
@@ -168,6 +171,7 @@ Client** parse_query_string(char *querystring) {
             clients[i] = malloc(sizeof(Client));
             bzero(clients[i], sizeof(Client));
             clients[i]->index = i;
+            clients[i]->output = malloc(MAX_OUTPUT);
         }
 
         switch (*key) {
@@ -213,21 +217,13 @@ void print_html_frame(Client* *clients) {
         Client* client = clients[i];
         if (client == NULL)
             continue;
-        printf("			<td valign=\"top\" id=\"m%d\"></td>\n", i);
+        printf("			<td valign=\"top\" id=\"m%d\">\n", i);
+        printf("              <pre>%s</pre>", client->output);
+        printf("            </td>");
     }
     printf("			</tr>\n");
     printf("		</table>\n");
     printf("	</font>\n");
     printf("</body>\n");
     printf("</html>\n");
-}
-
-void printc(Client* client, char* format, ...) {
-    va_list args;
-
-    printf("<script>document.all['m%d'].innerHTML += \"", client->index);
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
-    printf("\";</script>");
 }

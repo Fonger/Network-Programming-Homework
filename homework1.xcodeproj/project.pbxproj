@@ -87,9 +87,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C4B9CEEE1BDD7CBB00938913 /* homework1 */ = {
+		C4B9CEEE1BDD7CBB00938913 /* homework1.cgi */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C4B9CEF61BDD7CBB00938913 /* Build configuration list for PBXNativeTarget "homework1" */;
+			buildConfigurationList = C4B9CEF61BDD7CBB00938913 /* Build configuration list for PBXNativeTarget "homework1.cgi" */;
 			buildPhases = (
 				C4B9CEEB1BDD7CBB00938913 /* Sources */,
 				C4B9CEEC1BDD7CBB00938913 /* Frameworks */,
@@ -99,7 +99,7 @@
 			);
 			dependencies = (
 			);
-			name = homework1;
+			name = homework1.cgi;
 			productName = homework1;
 			productReference = C4B9CEEF1BDD7CBB00938913 /* homework1 */;
 			productType = "com.apple.product-type.tool";
@@ -130,7 +130,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C4B9CEEE1BDD7CBB00938913 /* homework1 */,
+				C4B9CEEE1BDD7CBB00938913 /* homework1.cgi */,
 			);
 		};
 /* End PBXProject section */
@@ -256,7 +256,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C4B9CEF61BDD7CBB00938913 /* Build configuration list for PBXNativeTarget "homework1" */ = {
+		C4B9CEF61BDD7CBB00938913 /* Build configuration list for PBXNativeTarget "homework1.cgi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C4B9CEF71BDD7CBB00938913 /* Debug */,
