@@ -11,7 +11,8 @@
 #include "../lib/unp.h"
 
 #define MAX_CLIENT 5
-#define MAX_OUTPUT 50000
+#define MAX_OUTPUT 60000
+#define MAX_LINE   10000
 #define TRUE 1
 #define FALSE 0
 
@@ -28,6 +29,7 @@ typedef struct {
     int     sockfd;
     int     status;
     char*   output;
+    char*   lastcmd;
 } Client;
 
 int new_client_fd(char *hostname, ushort port);
@@ -38,7 +40,7 @@ int main() {
     chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
 
     printf("Content-Type: text/html\n\n");
-    setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&b1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&b2=t2.txt", 1);
+    setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&b1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&b2=t1.txt", 1);
     char *qs = getenv("QUERY_STRING");
     Client* *clients = parse_query_string(qs);
 
@@ -51,7 +53,7 @@ int main() {
     fd_set wfds_a; /* active write file descriptor set */
     
     //int nfds = 4;
-    int nfds = 9;
+    int nfds = FD_SETSIZE;
     
     FD_ZERO(&rfds_a);
     FD_ZERO(&wfds_a);
@@ -89,26 +91,56 @@ int main() {
                 socklen_t clilen = sizeof(struct sockaddr_in);
                 if (getsockopt(c->sockfd, SOL_SOCKET, SO_ERROR, &error, &clilen) < 0 ||
                     error != 0) {
-                    fprintf(stderr, "non-blocking connect failed\n");
-                    exit(1);
+                    err_sys("non-blocking connect failed");
                 }
                 c->status = F_READING;
                 FD_CLR(c->sockfd, &wfds);
             } else if (c->status == F_READING && FD_ISSET(c->sockfd, &rfds) ) {
-                char buf[1024];
-                Read(c->sockfd, buf, sizeof(buf));
-                strcat(c->output, buf);
-                
+                char buf[MAX_LINE];
+                ssize_t rResult;
+                while ((rResult = read(c->sockfd, buf, sizeof(buf))) > 0) {
+                    buf[rResult] = '\0';
+                    strcat(c->output, buf);
+                }
+
+                if (rResult < 0) {
+                    if (errno != EWOULDBLOCK)
+                        err_sys("read socket failed");
+                }
+
                 FD_CLR(c->sockfd, &rfds);
                 FD_SET(c->sockfd, &wfds);
                 c->status = F_WRITING;
             } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
-                strcat(c->output, "printenv path\n");
-                Write(c->sockfd, "printenv path\n", 14);
-                c->status = F_DONE;
-                FD_CLR(c->sockfd, &wfds);
-                FD_CLR(c->sockfd, &rfds);
-                nclients--;
+
+                char* cmd;
+                
+                if (c->lastcmd != NULL)
+                    cmd = c->lastcmd;
+                else
+                    cmd = malloc(MAX_LINE);
+                
+                if (fgets(cmd, MAX_LINE, c->batch) != NULL) {
+                    if (write(c->sockfd, cmd, strlen(cmd)) < 0) {
+                        if (errno == EWOULDBLOCK) {
+                            c->lastcmd = cmd;
+                            continue;
+                        } else
+                            err_sys("Write cmd failed");
+                    }
+
+                    strcat(c->output, cmd);
+
+                    free(cmd);
+                    c->lastcmd = NULL;
+                    
+                    c->status = F_READING;
+                    FD_SET(c->sockfd, &rfds);
+                } else {
+                    c->status = F_DONE;
+                    FD_CLR(c->sockfd, &wfds);
+                    nclients--;
+                }
             }
         }
     }
@@ -181,13 +213,12 @@ Client** parse_query_string(char *querystring) {
             case 'p':
                 clients[i]->port = atoi(val);
                 break;
-            case 'f':
+            case 'b':
                 clients[i]->batch = fopen(val, "r");
                 break;
             default:
                 break;
         }
-        printf("%s=%s\n", key, val);
         item = strtok(NULL, "&");
     }
     return clients;
@@ -213,13 +244,13 @@ void print_html_frame(Client* *clients) {
     printf("			</tr>\n");
     printf("			<tr>\n");
 
-    for (int i = 0; i < MAX_CLIENT; i++) {
-        Client* client = clients[i];
+    for (int j = 0; j < MAX_CLIENT; j++) {
+        Client* client = clients[j];
         if (client == NULL)
             continue;
-        printf("			<td valign=\"top\" id=\"m%d\">\n", i);
-        printf("              <pre>%s</pre>", client->output);
-        printf("            </td>");
+        printf("			<td valign=\"top\" id=\"m%d\">\n", client->index);
+        printf("              <pre>%s</pre>\n", client->output);
+        printf("            </td>\n");
     }
     printf("			</tr>\n");
     printf("		</table>\n");
