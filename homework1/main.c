@@ -16,23 +16,18 @@
 #include   <sys/shm.h>
 
 
-#define MAX_BUFF 100000
-#define MAX_LINE 40000
-#define MAX_CMDS 10000
-#define MAX_ARGS 20
-#define MAX_NAME 20
-#define ERR_CMD_NOT_FOUND -5
+#define BUF_SIZE 100000
+#define USERID_SIZE 50
+
 #define TRUE 1
 #define FALSE 0
-#define MAX_USER 30
-#define MAX_CHAT 2000
 
 typedef struct __attribute__((__packed__)) {
     unsigned char  VN;
     unsigned char  CD;
     unsigned short DST_PORT;
     unsigned int   DST_IP;
-    unsigned char  userid[4];
+    unsigned char  userid[0];
 } ClientInfo;
 
 #define SOCK_GRANTED  90
@@ -40,7 +35,7 @@ typedef struct __attribute__((__packed__)) {
 
 int new_socket();
 
-char buffer[MAX_BUFF];
+char buffer[BUF_SIZE];
 
 int main() {
     printf("Hello, World!\n");
@@ -75,34 +70,35 @@ int main() {
             /* child */
             Close(listenfd);
 
-            ClientInfo clientInfo;
-            if (Read(connfd, &clientInfo, sizeof(clientInfo)) < 8)
+            ClientInfo *pclientInfo = malloc(sizeof(ClientInfo) + USERID_SIZE);
+
+            if (Read(connfd, pclientInfo, sizeof(ClientInfo) + USERID_SIZE) < sizeof(ClientInfo))
                 goto fail;
             
-            if (clientInfo.VN != 4) {
+            if (pclientInfo->VN != 4) {
                 printf("Not SOCK version 4\n");
                 goto fail;
             }
 
-            printf("version: %d\n", clientInfo.VN);
-            printf("cd: %d\n", clientInfo.CD);
-            printf("port: %d\n", ntohs(clientInfo.DST_PORT));
-            printf("ip: %x\n", ntohl(clientInfo.DST_IP));
+            printf("version: %d\n", pclientInfo->VN);
+            printf("cd: %d\n", pclientInfo->CD);
+            printf("port: %d\n", ntohs(pclientInfo->DST_PORT));
+            printf("ip: %x\n", ntohl(pclientInfo->DST_IP));
             
-            if (clientInfo.CD == 1) {
+            if (pclientInfo->CD == 1) {
                 // Connect mode
 
                 // grant access
-                clientInfo.VN = 0;
-                clientInfo.CD = SOCK_GRANTED;
-                Writen(connfd, &clientInfo, sizeof(ClientInfo));
+                pclientInfo->VN = 0;
+                pclientInfo->CD = SOCK_GRANTED;
+                Writen(connfd, pclientInfo, sizeof(ClientInfo));
                 
                 int rsockfd = Socket(AF_INET, SOCK_STREAM, 0);
                 
                 bzero(&servaddr, sizeof(servaddr));
                 servaddr.sin_family = AF_INET;
-                servaddr.sin_addr.s_addr = clientInfo.DST_IP;
-                servaddr.sin_port = clientInfo.DST_PORT;
+                servaddr.sin_addr.s_addr = pclientInfo->DST_IP;
+                servaddr.sin_port = pclientInfo->DST_PORT;
                 
                 Connect(rsockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
                 
@@ -123,13 +119,13 @@ int main() {
                     rfds = rfds_a;
                     Select(nfds, &rfds, NULL, NULL, &timeout);
                     if (FD_ISSET(rsockfd, &rfds)) {
-                        ssize_t n = read(rsockfd, buffer, MAX_BUFF);
+                        ssize_t n = read(rsockfd, buffer, BUF_SIZE);
                         if (n > 0)
                             Writen(connfd, buffer, n);
                         else
                             FD_CLR(rsockfd, &rfds_a);
                     } else if (FD_ISSET(connfd, &rfds)) {
-                        ssize_t n = read(connfd, buffer, MAX_BUFF);
+                        ssize_t n = read(connfd, buffer, BUF_SIZE);
                         if (n > 0)
                             Writen(rsockfd, buffer, n);
                         else
@@ -137,7 +133,7 @@ int main() {
                     } else break;
                 }
                 Close(rsockfd);
-            } else if (clientInfo.CD == 2) {
+            } else if (pclientInfo->CD == 2) {
                 // Bind mode
                 
                 int rlistenfd = Socket(AF_INET, SOCK_STREAM, 0);
@@ -154,13 +150,13 @@ int main() {
                 
                 Listen(rlistenfd, LISTENQ);
                 
-                clientInfo.VN = 0;
-                clientInfo.CD = SOCK_GRANTED;
-                clientInfo.DST_IP = htonl(INADDR_ANY);
-                clientInfo.DST_PORT = servaddr.sin_port;
+                pclientInfo->VN = 0;
+                pclientInfo->CD = SOCK_GRANTED;
+                pclientInfo->DST_IP = htonl(INADDR_ANY);
+                pclientInfo->DST_PORT = servaddr.sin_port;
                 
                 // First return our server ip (0 will be treated as proxy server) & port
-                Writen(connfd, &clientInfo, sizeof(clientInfo));
+                Writen(connfd, pclientInfo, sizeof(ClientInfo));
                 
                 // Then accept
                 int rsockfd = Accept(rlistenfd, (SA *)&cliaddr, &clilen);
@@ -168,8 +164,8 @@ int main() {
                 Close(rlistenfd);
                 
                 // Check if client address equals to destination ip
-                if (cliaddr.sin_addr.s_addr == clientInfo.DST_IP) {
-                    Writen(connfd, &clientInfo, sizeof(clientInfo));
+                if (cliaddr.sin_addr.s_addr == pclientInfo->DST_IP) {
+                    Writen(connfd, pclientInfo, sizeof(ClientInfo));
                     
                     fd_set rfds;
                     fd_set rfds_a;
@@ -188,13 +184,13 @@ int main() {
                         rfds = rfds_a;
                         Select(nfds, &rfds, NULL, NULL, &timeout);
                         if (FD_ISSET(rsockfd, &rfds)) {
-                            ssize_t n = read(rsockfd, buffer, MAX_BUFF);
+                            ssize_t n = read(rsockfd, buffer, BUF_SIZE);
                             if (n > 0)
                                 Writen(connfd, buffer, n);
                             else
                                 FD_CLR(rsockfd, &rfds_a);
                         } else if (FD_ISSET(connfd, &rfds)) {
-                            ssize_t n = read(connfd, buffer, MAX_BUFF);
+                            ssize_t n = read(connfd, buffer, BUF_SIZE);
                             if (n > 0)
                                 Writen(rsockfd, buffer, n);
                             else
@@ -202,8 +198,8 @@ int main() {
                         } else break;
                     }
                 } else {
-                    clientInfo.CD = SOCK_REJECTED;
-                    Write(connfd, &clientInfo, sizeof(clientInfo));
+                    pclientInfo->CD = SOCK_REJECTED;
+                    Write(connfd, pclientInfo, sizeof(ClientInfo));
                 }
                 Close(rsockfd);
             }
@@ -211,6 +207,7 @@ int main() {
             fflush(stdout);
         fail:
             Close(connfd);
+            free(pclientInfo);
             exit(0);
         }
     }
