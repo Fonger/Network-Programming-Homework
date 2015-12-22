@@ -32,10 +32,10 @@ typedef struct __attribute__((__packed__)) {
     unsigned char  CD;
     unsigned short DST_PORT;
     unsigned int   DST_IP;
-    unsigned char  userid[0];
+    unsigned char  userid[4];
 } ClientInfo;
 
-#define SOCK_GRANTED 70
+#define SOCK_GRANTED 90
 
 int new_socket();
 
@@ -75,21 +75,21 @@ int main() {
             Close(listenfd);
 
             ClientInfo clientInfo;
-            if (Read(connfd, &clientInfo, sizeof(clientInfo)) < sizeof(clientInfo))
-                goto fail;
+            Read(connfd, &clientInfo, sizeof(clientInfo)) < sizeof(clientInfo);
             
             if (clientInfo.VN != 4) {
                 printf("Not SOCK version 4\n");
                 goto fail;
             }
 
-            printf("version: %d\n", clientInfo.VN);
-            printf("cd: %d\n", clientInfo.CD);
-            printf("port: %d\n", htons(clientInfo.DST_PORT));
-            printf("ip: %x\n", htonl(clientInfo.DST_IP));
-            
+//            printf("version: %d\n", clientInfo.VN);
+//            printf("cd: %d\n", clientInfo.CD);
+//            printf("port: %d\n", htons(clientInfo.DST_PORT));
+//            printf("ip: %x\n", htonl(clientInfo.DST_IP));
+//            
             if (clientInfo.CD == 1) {
-                printf("Connect mode=====\n");
+                // Connect mode
+                clientInfo.VN = 0;
                 clientInfo.CD = SOCK_GRANTED;
                 Writen(connfd, &clientInfo, sizeof(ClientInfo));
                 
@@ -100,33 +100,45 @@ int main() {
                 servaddr.sin_addr.s_addr = clientInfo.DST_IP;
                 servaddr.sin_port = clientInfo.DST_PORT;
                 
+                Connect(rsockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
                 
                 fd_set rfds;
-                fd_set wfds;
-                fd_set fds;
-
-                bzero(&fds, sizeof(rfds));
+                fd_set rfds_a;
                 
-                FD_SET(rsockfd, &fds);
+                FD_ZERO(&rfds_a);
+                FD_SET(rsockfd, &rfds_a);
+                FD_SET(connfd, &rfds_a);
 
+                int nfds = ( (connfd > rsockfd) ? connfd : rsockfd ) + 1;
                 
-                int nfds = 7;
+                struct timeval timeout;
+                timeout.tv_sec = 30;
+                timeout.tv_usec = 0;
                 
                 while (TRUE) {
-                    rfds = fds;
-                    wfds = fds;
-                    Select(nfds, &rfds, &wfds, NULL, NULL);
+                    rfds = rfds_a;
+                    Select(nfds, &rfds, NULL, NULL, &timeout);
                     if (FD_ISSET(rsockfd, &rfds)) {
-
-                    } else if (FD_ISSET(rsockfd, &wfds)) {
-                        
-                    }
+                        ssize_t n = read(rsockfd, buffer, MAX_BUFF);
+                        if (n > 0)
+                            Writen(connfd, buffer, n);
+                        else
+                            FD_CLR(rsockfd, &rfds_a);
+                    } else if (FD_ISSET(connfd, &rfds)) {
+                        ssize_t n = read(connfd, buffer, MAX_BUFF);
+                        if (n > 0)
+                            Writen(rsockfd, buffer, n);
+                        else
+                            FD_CLR(connfd, &rfds_a);
+                    } else break;
                 }
-                
+                Close(rsockfd);
             }
-
+            printf("conn lost\n");
+            fflush(stdout);
         fail:
             Close(connfd);
+            exit(0);
         }
     }
     return 0;
