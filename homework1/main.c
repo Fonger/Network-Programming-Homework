@@ -75,20 +75,23 @@ int main() {
             Close(listenfd);
 
             ClientInfo clientInfo;
-            Read(connfd, &clientInfo, sizeof(clientInfo)) < sizeof(clientInfo);
+            if (Read(connfd, &clientInfo, sizeof(clientInfo)) < sizeof(clientInfo))
+                goto fail;
             
             if (clientInfo.VN != 4) {
                 printf("Not SOCK version 4\n");
                 goto fail;
             }
 
-//            printf("version: %d\n", clientInfo.VN);
-//            printf("cd: %d\n", clientInfo.CD);
-//            printf("port: %d\n", htons(clientInfo.DST_PORT));
-//            printf("ip: %x\n", htonl(clientInfo.DST_IP));
-//            
+            printf("version: %d\n", clientInfo.VN);
+            printf("cd: %d\n", clientInfo.CD);
+            printf("port: %d\n", ntohs(clientInfo.DST_PORT));
+            printf("ip: %x\n", ntohl(clientInfo.DST_IP));
+            
             if (clientInfo.CD == 1) {
                 // Connect mode
+
+                // grant access
                 clientInfo.VN = 0;
                 clientInfo.CD = SOCK_GRANTED;
                 Writen(connfd, &clientInfo, sizeof(ClientInfo));
@@ -133,6 +136,9 @@ int main() {
                     } else break;
                 }
                 Close(rsockfd);
+            } else if (clientInfo.CD == 2) {
+                // Bind mode
+                
             }
             printf("conn lost\n");
             fflush(stdout);
