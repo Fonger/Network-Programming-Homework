@@ -35,7 +35,8 @@ typedef struct __attribute__((__packed__)) {
     unsigned char  userid[4];
 } ClientInfo;
 
-#define SOCK_GRANTED 90
+#define SOCK_GRANTED  90
+#define SOCK_REJECTED 91
 
 int new_socket();
 
@@ -75,7 +76,7 @@ int main() {
             Close(listenfd);
 
             ClientInfo clientInfo;
-            if (Read(connfd, &clientInfo, sizeof(clientInfo)) < sizeof(clientInfo))
+            if (Read(connfd, &clientInfo, sizeof(clientInfo)) < 8)
                 goto fail;
             
             if (clientInfo.VN != 4) {
@@ -139,6 +140,72 @@ int main() {
             } else if (clientInfo.CD == 2) {
                 // Bind mode
                 
+                int rlistenfd = Socket(AF_INET, SOCK_STREAM, 0);
+                
+                bzero(&servaddr, sizeof(servaddr));
+                servaddr.sin_family = AF_INET;
+                servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+                servaddr.sin_port = htons(INADDR_ANY);
+
+                Bind(rlistenfd, (SA *)&servaddr, sizeof(servaddr));
+                socklen_t socklen = sizeof(servaddr);
+                
+                getsockname(rlistenfd, (SA *)&servaddr, &socklen);
+                
+                Listen(rlistenfd, LISTENQ);
+                
+                clientInfo.VN = 0;
+                clientInfo.CD = SOCK_GRANTED;
+                clientInfo.DST_IP = htonl(INADDR_ANY);
+                clientInfo.DST_PORT = servaddr.sin_port;
+                
+                // First return our server ip (0 will be treated as proxy server) & port
+                Writen(connfd, &clientInfo, sizeof(clientInfo));
+                
+                // Then accept
+                int rsockfd = Accept(rlistenfd, (SA *)&cliaddr, &clilen);
+                
+                Close(rlistenfd);
+                
+                // Check if client address equals to destination ip
+                if (cliaddr.sin_addr.s_addr == clientInfo.DST_IP) {
+                    Writen(connfd, &clientInfo, sizeof(clientInfo));
+                    
+                    fd_set rfds;
+                    fd_set rfds_a;
+                    
+                    FD_ZERO(&rfds_a);
+                    FD_SET(rsockfd, &rfds_a);
+                    FD_SET(connfd, &rfds_a);
+                    
+                    int nfds = ( (connfd > rsockfd) ? connfd : rsockfd ) + 1;
+                    
+                    struct timeval timeout;
+                    timeout.tv_sec = 30;
+                    timeout.tv_usec = 0;
+                    
+                    while (TRUE) {
+                        rfds = rfds_a;
+                        Select(nfds, &rfds, NULL, NULL, &timeout);
+                        if (FD_ISSET(rsockfd, &rfds)) {
+                            ssize_t n = read(rsockfd, buffer, MAX_BUFF);
+                            if (n > 0)
+                                Writen(connfd, buffer, n);
+                            else
+                                FD_CLR(rsockfd, &rfds_a);
+                        } else if (FD_ISSET(connfd, &rfds)) {
+                            ssize_t n = read(connfd, buffer, MAX_BUFF);
+                            if (n > 0)
+                                Writen(rsockfd, buffer, n);
+                            else
+                                FD_CLR(connfd, &rfds_a);
+                        } else break;
+                    }
+                } else {
+                    clientInfo.CD = SOCK_REJECTED;
+                    Write(connfd, &clientInfo, sizeof(clientInfo));
+                }
+                Close(rsockfd);
             }
             printf("conn lost\n");
             fflush(stdout);
