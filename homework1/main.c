@@ -26,139 +26,23 @@
 #define FALSE 0
 #define MAX_USER 30
 #define MAX_CHAT 2000
-#define MAX_PUBLIC_PIPE 100
 
-struct USER {
-    int         id;
-    char        name[MAX_NAME + 1];
-    char        ip[INET6_ADDRSTRLEN];
-    int         port;
-    pid_t       pid;
-    char        msg[MAX_CHAT];
-};
+typedef struct __attribute__((__packed__)) {
+    unsigned char  VN;
+    unsigned char  CD;
+    unsigned short DST_PORT;
+    unsigned int   DST_IP;
+    unsigned char  userid[0];
+} ClientInfo;
 
-void showSymbol(int sockfd);
-int receive_cmd();
-int parse_cmd(char input[], char *out_cmd[]);
-int parse_argv(char input[], char *out_argv[]);
-int parse_number(char input[]);
-struct USER* set_new_user(struct sockaddr_in *cliaddr);
-void clear_user();
-void broadcast(const char *format, ...);
+#define SOCK_GRANTED 70
 
-struct USER* get_user(int id);
+int new_socket();
 
-char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd, char* fifopath);
+char buffer[MAX_BUFF];
 
-int shmid_user = 0;
-key_t shm_key_user = 0x19931009;
-struct USER *users = NULL;
-
-int shmid_public_msg = 0;
-key_t shm_key_public_msg = 0x19931010;
-char *public_msg = NULL;
-
-int shmid_public_pipes = 0;
-key_t shm_key_public_pipes = 0x19931011;
-int *public_pipes = NULL;
-
-char welcome[] = "****************************************\n** Welcome to the information server. **\n****************************************\n% ";
-
-char fifo_dir[] = "/tmp/nphw2-0112503/";
-
-int child_connfd = -1;
-struct USER *me;
-
-static void intrupt_handler(int signo) {
-    if (shmid_user > 0) {
-        printf("[%d] Detaching shared memory of users...\n", getpid());
-        if (users != NULL && shmdt(users) < 0)
-            err_sys("shmdt users");
-        
-        /* if master */
-        if (child_connfd < 0) {
-            printf("[%d] Master is removing shared memory of users...\n", getpid());
-            shmctl(shmid_user, IPC_RMID, NULL);
-        }
-    }
-    if (shmid_public_msg > 0) {
-        printf("[%d] Detaching shared memory of public msg...\n", getpid());
-        if (public_msg != NULL && shmdt(public_msg) < 0)
-            err_sys("shmdt public_msg");
-        
-        /* if master */
-        if (child_connfd < 0) {
-            printf("[%d] Master is removing shared memory of public msg...\n", getpid());
-            shmctl(shmid_public_msg, IPC_RMID, NULL);
-        }
-    }
-    if (shmid_public_pipes > 0) {
-        printf("[%d] Detaching shared memory of public pipes...\n", getpid());
-        if (public_pipes != NULL && shmdt(public_pipes) < 0)
-            err_sys("shmdt public_pipes");
-        
-        /* if master */
-        if (child_connfd < 0) {
-            printf("[%d] Master is removing shared memory of public pipes...\n", getpid());
-            shmctl(shmid_public_pipes, IPC_RMID, NULL);
-        }
-    }
-    exit(0);
-}
-
-static void broadcast_handler(int signo) {
-    if (child_connfd > 0) {
-        Writen(child_connfd, public_msg, strlen(public_msg));
-    }
-}
-
-static void tell_handler(int signo) {
-    if (child_connfd > 0) {
-        Writen(child_connfd, me->msg, strlen(me->msg));
-    }
-}
 int main() {
     printf("Hello, World!\n");
-
-    shmid_user = shmget(shm_key_user, MAX_USER * sizeof(struct USER), SHM_R | SHM_W | IPC_CREAT);
-    if (shmid_user < 0)
-        err_sys("shmget users");
-    users = shmat(shmid_user, NULL, 0);
-    if (users < 0)
-        err_sys("shmat users");
-    
-    bzero(users, MAX_USER * sizeof(struct USER));
-
-
-    shmid_public_msg = shmget(shm_key_public_msg, MAX_CHAT, SHM_R | SHM_W | IPC_CREAT);
-    if (shmid_public_msg < 0)
-        err_sys("shmget public_msg");
-    public_msg = shmat(shmid_public_msg, NULL, 0);
-    if (public_msg < 0)
-        err_sys("shmat public_msg");
-
-    shmid_public_pipes = shmget(shm_key_public_pipes, MAX_PUBLIC_PIPE * sizeof(int), SHM_R | SHM_W | IPC_CREAT);
-    if (shmid_public_pipes < 0)
-        err_sys("shmget public_pipes");
-    public_pipes = shmat(shmid_public_pipes, NULL, 0);
-    if (public_pipes < 0)
-        err_sys("shmat public_pipes");
-
-    memset(public_pipes, -1, MAX_PUBLIC_PIPE * sizeof(int));
-    
-    if (signal(SIGINT, intrupt_handler) == SIG_ERR)
-        err_sys("Setting signal SIGINT");
-
-    if (signal(SIGUSR1, broadcast_handler) == SIG_ERR)
-        err_sys("Setting signal SIGUSR1");
-    
-    if (signal(SIGUSR2, tell_handler) == SIG_ERR)
-        err_sys("Setting signal SIGUSR2");
-    
-    //chdir("/Users/jerry/Downloads/ras");
-    
-    mkdir(fifo_dir, S_IRWXU);
-    
     int listenfd, connfd;
 
     socklen_t clilen;
@@ -170,11 +54,15 @@ int main() {
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(SERV_PORT);
-    
+
     Bind(listenfd, (SA *) &servaddr, sizeof(servaddr));
     
     Listen(listenfd, LISTENQ);
 
+    if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
+        err_sys("Can't set SIGCHLD signal to SIG_IGN");
+    }
+    
     for (;;) {
         clilen = sizeof(cliaddr);
         connfd = Accept(listenfd, (SA *) &cliaddr, &clilen);
@@ -184,487 +72,62 @@ int main() {
             Close(connfd);
         } else if (child_pid == 0) {
             /* child */
-            child_connfd = connfd;
             Close(listenfd);
-            Writen(connfd, welcome, sizeof(welcome) - 1);
-            if (set_new_user(&cliaddr) == NULL) {
-                dprintf(connfd, "Sorry, the server is over capicity (%d/%d).\n", MAX_USER, MAX_USER);
+
+            ClientInfo clientInfo;
+            if (Read(connfd, &clientInfo, sizeof(clientInfo)) < sizeof(clientInfo))
+                goto fail;
+            
+            if (clientInfo.VN != 4) {
+                printf("Not SOCK version 4\n");
                 goto fail;
             }
-            broadcast("*** User '%s' entered from %s/%d. ***\n", me->name, me->ip, me->port);
-            printf("new user id=%d\n", me->id);
-            receive_cmd();
-            broadcast("*** User '%s' left. ***\n", me->name);
-            clear_user();
+
+            printf("version: %d\n", clientInfo.VN);
+            printf("cd: %d\n", clientInfo.CD);
+            printf("port: %d\n", htons(clientInfo.DST_PORT));
+            printf("ip: %x\n", htonl(clientInfo.DST_IP));
+            
+            if (clientInfo.CD == 1) {
+                printf("Connect mode=====\n");
+                clientInfo.CD = SOCK_GRANTED;
+                Writen(connfd, &clientInfo, sizeof(ClientInfo));
+                
+                int rsockfd = Socket(AF_INET, SOCK_STREAM, 0);
+                
+                bzero(&servaddr, sizeof(servaddr));
+                servaddr.sin_family = AF_INET;
+                servaddr.sin_addr.s_addr = clientInfo.DST_IP;
+                servaddr.sin_port = clientInfo.DST_PORT;
+                
+                
+                fd_set rfds;
+                fd_set wfds;
+                fd_set fds;
+
+                bzero(&fds, sizeof(rfds));
+                
+                FD_SET(rsockfd, &fds);
+
+                
+                int nfds = 7;
+                
+                while (TRUE) {
+                    rfds = fds;
+                    wfds = fds;
+                    Select(nfds, &rfds, &wfds, NULL, NULL);
+                    if (FD_ISSET(rsockfd, &rfds)) {
+
+                    } else if (FD_ISSET(rsockfd, &wfds)) {
+                        
+                    }
+                }
+                
+            }
+
         fail:
             Close(connfd);
-            raise(SIGINT);
         }
     }
     return 0;
-}
-
-struct USER* set_new_user(struct sockaddr_in *cliaddr) {
-    for (int i = 0; i < MAX_USER; i++) {
-        struct USER* user = &users[i];
-        if (user->pid == 0) {
-            user->id = i + 1;
-            user->pid = getpid();
-            user->port = cliaddr->sin_port;
-            strcpy(user->ip, inet_ntoa(cliaddr->sin_addr));
-            strcpy(user->name, "(no name)");
-            me = user;
-            return user;
-        }
-    }
-    return NULL;
-}
-
-void clear_user() {
-    me->pid = 0;
-}
-
-struct USER* get_user(int id) {
-    if (id > 0 && id < MAX_USER) {
-        struct USER* user = &users[id - 1];
-        if (user->pid > 0)
-            return user;
-    }
-    return NULL;
-}
-
-void broadcast(const char *format, ...) {
-    va_list args;
-
-    va_start(args, format);
-    vsnprintf(public_msg, MAX_CHAT, format, args);
-    va_end(args);
-
-    for (int i = 0; i < MAX_USER; i++) {
-        if (users[i].pid > 0) {
-            kill(users[i].pid, SIGUSR1);
-        }
-    }
-}
-
-int receive_cmd()
-{
-    setenv("PATH", "/Users/jerry/Downloads/ras/bin:/bin:bin:.", TRUE);
-
-    ssize_t     n = 0;
-    char        buf[MAX_BUFF];
-    char        input[MAX_BUFF];
-    int         pos;
-    int         unknown_command = 0;
-    int         pipes[MAX_LINE][2];
-    int         current_line;
-    
-    memset(pipes, -1, sizeof(pipes));
-
-    for(;;) {
-        
-    again:
-        pos = 0;
-        do {
-            n = Read(child_connfd, &buf[pos], MAX_BUFF - pos);
-            pos += n;
-        } while (buf[pos - 1] != '\n');
-        buf[pos] = '\0';
-        
-        strlcpy(input, buf, MAX_BUFF);
-        if (input[pos-2] == '\r')
-            input[pos-2] = '\0';
-        if (input[pos-1] == '\n')
-            input[pos-1] = '\0';
-
-        
-        char *cmdv[MAX_CMDS];
-        int cmdc = parse_cmd(buf, cmdv);
-        printf("line: %d\n unknwon: %d\n", current_line, unknown_command);
-        int fd_in = pipes[current_line][0];
-        
-        if (pipes[current_line][1] != -1 && !unknown_command) {
-            Close(pipes[current_line][1]);
-            pipes[current_line][1] = -1;
-        }
-        
-        unknown_command = 0;
-        
-        for (int i = 0; i < cmdc; i++) {
-            
-            printf("cmdv[%d] = %s\n", i, cmdv[i]);
-
-            char *argv[MAX_ARGS];
-
-            int argc = parse_argv(cmdv[i], argv);
-            
-            if (argc == 0)
-                continue;
-            
-            for (int j = 0; j < argc; j++)
-                printf("argv[%d] = %s\n", j, argv[j]);
-            
-            if (strcmp(argv[0], "exit") == 0) {
-                return -1;
-            }
-            
-            if (strcmp(argv[0], "printenv") == 0) {
-                for (int j = 1; j < argc; j++)
-                    dprintf(child_connfd, "%s=%s\n", argv[j], getenv(argv[j]));
-                break;
-            }
-            
-            if (strcmp(argv[0], "setenv") == 0) {
-                if (argc == 3)
-                    setenv(argv[1], argv[2], TRUE);
-                else
-                    dprintf(child_connfd, "usage: setenv KEY VALIE\n");
-                break;
-            }
-            
-            if (strcmp(argv[0], "who") == 0) {
-                dprintf(child_connfd, "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
-                for (int b = 0; b < MAX_USER; b++) {
-                    if (users[b].pid > 0) {
-                        dprintf(child_connfd, "%d\t%s\t%s/%d\t%s\n",
-                                users[b].id,
-                                users[b].name,
-                                users[b].ip,
-                                users[b].port,
-                                users[b].id == me->id ? "<-me":"");
-                    }
-                }
-                break;
-            }
-            
-            if (strcmp(argv[0], "name") == 0) {
-                if (argc < 2) {
-                    dprintf(child_connfd, "usage: name (name)\n");
-                    break;
-                }
-                
-                for (int j = 2; j < argc; j++)
-                    *(argv[j] - 1) = ' ';
-                
-                for (int b = 0; b < MAX_USER; b++) {
-                    if (users[b].id > 0) {
-                        if (strcmp(argv[1], users[b].name) == 0) {
-                            dprintf(child_connfd, "*** User '%s' already exists. ***\n%% ", argv[1]);
-                            goto again;
-                        }
-                    }
-                }
-
-                strlcpy(me->name, argv[1], sizeof(me->name));
-                broadcast("*** User from %s/%d is named '%s'. ***\n", me->ip, me->port, argv[1]);
-                break;
-            }
-            
-            if (strcmp(argv[0], "yell") == 0) {
-                if (argc < 2) {
-                    dprintf(child_connfd, "usage: yell (message)\n");
-                    break;
-                }
-                
-                for (int j = 2; j < argc; j++)
-                    *(argv[j] - 1) = ' ';
-
-                broadcast("*** %s yelled ***: %s\n", me->name, argv[1]);
-                break;
-            }
-            
-            if (strcmp(argv[0], "tell") == 0) {
-                if (argc < 3) {
-                    dprintf(child_connfd, "usage: tell (client id) (message)\n");
-                    break;
-                }
-                for (int j = 3; j < argc; j++)
-                    *(argv[j] - 1) = ' ';
-                
-                int dest_user_id = atoi(argv[1]);
-
-                struct USER* dest_user = get_user(dest_user_id);
-                if (dest_user == NULL) {
-                    dprintf(child_connfd, "*** Error: user #%d does not exist yet. ***\n", dest_user_id);
-                } else {
-                    snprintf(dest_user->msg, sizeof(dest_user->msg), "*** %s told you ***: %s\n", me->name, argv[2]);
-                    kill(dest_user->pid, SIGUSR2);
-                }
-                break;
-            }
-            
-            int fd_out;
-            int fd_errout;
-            int in_out_pipe[2];
-
-            int close_fd_out = 1;
-            int close_fd_errout = 1;
-            
-            int minus = 0;
-            
-            char *fifopath = NULL;
-            // Receiving from public pipe only happen in first command
-            if (i == 0) {
-                for (int q = 0; q < argc; q++) {
-                    if (argv[q][0] == '<') {
-                        int pipe_id = atoi(&argv[q][1]);
-                        minus++;
-                        
-                        for (int s = 0; s < MAX_PUBLIC_PIPE; s++) {
-                            if (public_pipes[s] == pipe_id) {
-                                char fifo_path[50];
-                                strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
-                                strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
-                                fd_in = open(fifo_path, O_RDONLY);
-                                public_pipes[s] = -1;
-                                goto success;
-                            }
-                        }
-                        
-                        dprintf(child_connfd, "*** Error: public pipe #%d does not exist yet. ***\n%% ", pipe_id);
-                        goto again;
-                    success:
-                        argv[q] = '\0';
-                        broadcast("*** %s (#%d) just received via '%s' ***\n", me->name, me->id, input);
-                        break;
-                    }
-                }
-            }
-            
-            if (i + 1 < cmdc) {
-                // If there's next command
-                Pipe(in_out_pipe);
-                fd_out = in_out_pipe[1];
-                fd_errout = in_out_pipe[1];
-            } else {
-                // This is last one
-                fd_out = child_connfd;
-                fd_errout = child_connfd;
-
-                for (int q = 0; q < argc; q++) {
-                    if (argv[q] == '\0') continue;
-                    if (strcmp(argv[q], ">") == 0) {
-                        fd_out = open(argv[q + 1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                        argv[q] = '\0';
-                        argc = q;
-                        break;
-                    } else if (argv[q][0] == '>') {
-                        int pipe_id = atoi(&argv[q][1]);
-                        
-                        minus++;
-                        
-                        int empty_pos = -1;
-
-                        for (int s = 0; s < MAX_PUBLIC_PIPE; s++) {
-                            if (public_pipes[s] == pipe_id) {
-                                dprintf(child_connfd, "*** Error: public pipe #%d already exists. ***\n%% ", pipe_id);
-                                goto again;
-                            } else if (empty_pos == -1 && public_pipes[s] == -1)
-                                empty_pos = s;
-                        }
-                        
-                        if (empty_pos != -1) {
-                            printf("empty pos: %d to %d\n", empty_pos, pipe_id);
-                            public_pipes[empty_pos] = pipe_id;
-                            //TODO: handle pipe full
-                        }
-                        
-                        char fifo_path[50];
-                        strlcpy(fifo_path, fifo_dir, sizeof(fifo_path));
-                        strlcat(fifo_path, &argv[q][1], sizeof(fifo_path));
-                        mkfifo(fifo_path, S_IRWXU);
-
-                        fifopath = Strdup(fifo_path);
-                        argv[q] = '\0';
-
-                        broadcast("*** %s (#%d) just piped '%s' ***\n", me->name, me->id, input);
-                    } else if (argv[q][0] == '|' && argv[q][1] != '!') {
-                        int dest_pipe = parse_number(&argv[q][1]) + current_line;
-                        printf("dest_pipe std = %d\n", dest_pipe);
-                        if (pipes[dest_pipe][1] == -1)
-                            Pipe(pipes[dest_pipe]);
-                        fd_out = pipes[dest_pipe][1];
-                        close_fd_out = 0;
-                        
-                        argv[q] = '\0';
-                        minus++;
-                    } else if (argv[q][0] == '!' && argv[q][1] != '|') {
-
-                        int dest_pipe = parse_number(&argv[q][1]) + current_line;
-                        printf("dest_pipe err = %d\n", dest_pipe);
-                        
-                        if (pipes[dest_pipe][1] == -1)
-                            Pipe(pipes[dest_pipe]);
-                        fd_errout = pipes[dest_pipe][1];
-                        close_fd_errout = 0;
-
-                        argv[q] = '\0';
-                        minus++;
-                    } else if (
-                               (argv[q][0] == '!' && argv[q][1] == '|') ||
-                               (argv[q][0] == '|' && argv[q][1] == '!')) {
-
-                        int dest_pipe = atoi(&argv[q][2]) + current_line;
-                        printf("dest_pipe std+err = %d\n", dest_pipe);
-                        
-                        if (pipes[dest_pipe][1] == -1)
-                            Pipe(pipes[dest_pipe]);
-
-                        fd_out = pipes[dest_pipe][1];
-                        fd_errout = pipes[dest_pipe][1];
-                        
-                        
-                        argv[q] = '\0';
-                        minus++;
-                    }
-                }
-            }
-            
-            argc -= minus;
-            
-            printf("pipe[0]=%d\n", in_out_pipe[0]);
-            printf("pipe[1]=%d\n", in_out_pipe[1]);
-            
-            char exit_code = fork_process(argv, fd_in, fd_out, fd_errout, child_connfd, fifopath);
-            
-            if (close_fd_out && fd_out != child_connfd && fd_out != -1)
-                Close(fd_out);
-            if (close_fd_errout && fd_errout != fd_out && fd_errout != child_connfd && fd_errout != -1)
-                Close(fd_errout);
-            
-            if (exit_code == ERR_CMD_NOT_FOUND) {
-                dprintf(child_connfd, "Unknown command: [%s].\n", argv[0]);
-                unknown_command = 1;
-                break;
-            } else {
-                if (fd_in != -1)
-                    Close(fd_in);
-                fd_in = in_out_pipe[0];
-            }
-        }
-        
-        showSymbol(child_connfd);
-
-        if (!unknown_command)
-            current_line++;
-    }
-    return 0;
-}
-
-char fork_process(char *argv[], int fd_in, int fd_out, int fd_errout, int sockfd, char *fifopath) {
-
-    pid_t child_pid = Fork();
-    if (child_pid > 0) { // parent
-
-        printf("Child spawn with pid: %d\n", child_pid);
-        
-        
-        int status = 0;
-        while( (wait( &status ) == -1) && (errno == EINTR) );
-
-        if (WIFEXITED(status)) {
-            char exit_code = WEXITSTATUS(status);
-            printf("Child pid (%d) exit code: %d\n", child_pid, exit_code);
-            return exit_code;
-        } else {
-            printf("Child pid (%d) crash status: %x\n", child_pid, status);
-            return 0;
-        }
-        
-    } else if (child_pid == 0) { // child
-
-        if (fifopath != NULL) {
-            // Sockfd is no longer used and should be close to prevent hanging;
-            Close(sockfd);
-            pid_t grandchild_pid = Fork();
-            if (grandchild_pid > 0)
-                exit(0);
-            else if (grandchild_pid == 0) {
-                fd_out = open(fifopath, O_WRONLY);
-                fd_errout = fd_out;
-            }
-        }
-        
-        if (fd_in != -1) {
-            Dup2(fd_in, STDIN_FILENO);
-            Close(fd_in);
-        }
-
-        Dup2(fd_out, STDOUT_FILENO);
-        Dup2(fd_errout, STDERR_FILENO);
-        
-        Close(fd_out);
-
-        if (fd_out != fd_errout)
-            Close(fd_errout);
-        
-        execvp(argv[0], argv);
-        
-        exit(ERR_CMD_NOT_FOUND);
-    } else {
-        err_sys("fork failed");
-    }
-    return 0;
-}
-void showSymbol(int sockfd) {
-    Writen(sockfd, "% ", 2);
-}
-
-int parse_cmd(char *input, char *cmd[]) {
-    char    *symbol = " | ";
-    size_t  length   = strlen(input);
-    size_t  offset   = strlen(symbol);
-    
-    if (length == 0)
-        return 0;
-    
-    if (input[length - 1] == '\n') {
-        if (--length == 0) // if only input \n
-            return 0;
-        input[length] = '\0';
-    }
-    
-    
-    int i = 0;
-    cmd[0] = input;
-
-    for (i = 1; (input = strstr(input, symbol)) != NULL; i++) {
-        *(input) = '\0';
-        input += offset;
-        cmd[i] = input;
-    }
-    return i;
-}
-
-int parse_argv(char input[], char *argv[]) {
-    char *delim = " \r\n";
-    
-    char *p = strtok(input, delim);
-    
-    if (p == NULL)
-        return 0;
-    
-    int  argc = 0;
-    argv[argc++] = p;
-    while ((p = strtok(NULL, delim)) != NULL)
-        argv[argc++] = p;
-    argv[argc] = '\0';
-    return argc;
-}
-
-int parse_number(char input[]) {
-    char *delim = "+";
-    
-    char *p = strtok(input, delim);
-    
-    if (p == NULL)
-        return 0;
-    
-    int num = atoi(p);
-
-    while ((p = strtok(NULL, delim)) != NULL) {
-        num += atoi(p);
-    }
-    
-    return num;
 }
