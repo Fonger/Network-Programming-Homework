@@ -109,10 +109,10 @@ int main() {
                 FD_SET(rsockfd, &rfds_a);
                 FD_SET(connfd, &rfds_a);
 
-                int nfds = ( (connfd > rsockfd) ? connfd : rsockfd ) + 1;
+                int nfds = 6;
                 
                 struct timeval timeout;
-                timeout.tv_sec = 30;
+                timeout.tv_sec = 120;
                 timeout.tv_usec = 0;
                 
                 while (TRUE) {
@@ -174,10 +174,10 @@ int main() {
                     FD_SET(rsockfd, &rfds_a);
                     FD_SET(connfd, &rfds_a);
                     
-                    int nfds = ( (connfd > rsockfd) ? connfd : rsockfd ) + 1;
+                    int nfds = 7;
                     
                     struct timeval timeout;
-                    timeout.tv_sec = 30;
+                    timeout.tv_sec = 120;
                     timeout.tv_usec = 0;
                     
                     while (TRUE) {
