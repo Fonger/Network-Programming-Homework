@@ -34,11 +34,17 @@ typedef struct __attribute__((__packed__)) {
 #define SOCK_REJECTED 91
 
 void proxy_pass(int csock, int rsock);
+void intrupt_handler(int sig);
+void quit_handler(int sig);
 
 char buffer[BUF_SIZE];
 
+pid_t SOCK_MASTER_PROC_ID;
+
 int main() {
     printf("Hello, World!\n");
+
+    SOCK_MASTER_PROC_ID = getpid();
     int listenfd, connfd;
 
     socklen_t clilen;
@@ -58,6 +64,13 @@ int main() {
     if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
         err_sys("Can't set SIGCHLD signal to SIG_IGN");
     }
+    if (signal(SIGINT, intrupt_handler) == SIG_ERR) {
+        err_sys("Can't set SIGINT signal to handler");
+    }
+    if (signal(SIGQUIT, quit_handler) == SIG_ERR) {
+        err_sys("Can't set SIGQUIT signal to handler");
+    }
+    
     
     for (;;) {
         clilen = sizeof(cliaddr);
@@ -188,4 +201,15 @@ void proxy_pass(int csock, int rsock) {
                 break;
         } else break;
     }
+}
+
+void intrupt_handler(int sig) {
+    if (SOCK_MASTER_PROC_ID == getpid()) {
+        kill(-SOCK_MASTER_PROC_ID, SIGQUIT);
+    }
+    exit(1);
+}
+
+void quit_handler(int sig) {
+    exit(1);
 }
