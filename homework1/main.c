@@ -15,10 +15,9 @@
 #include   <sys/ipc.h>
 #include   <sys/shm.h>
 
-
 #define BUF_SIZE 100000
 #define USERID_SIZE 50
-
+#define PARTIAL_SIZE 50
 #define TRUE 1
 #define FALSE 0
 
@@ -30,21 +29,19 @@ typedef struct __attribute__((__packed__)) {
     unsigned char  userid[0];
 } ClientInfo;
 
+#define SOCK_CONNECT  1
+#define SOCK_BIND     2
 #define SOCK_GRANTED  90
 #define SOCK_REJECTED 91
 
 void proxy_pass(int csock, int rsock);
-void intrupt_handler(int sig);
-void quit_handler(int sig);
+ssize_t ReadPrint(int sockfd, char *buffer, ssize_t size);
 
 char buffer[BUF_SIZE];
-
-pid_t SOCK_MASTER_PROC_ID;
 
 int main() {
     printf("Hello, World!\n");
 
-    SOCK_MASTER_PROC_ID = getpid();
     int listenfd, connfd;
 
     socklen_t clilen;
@@ -60,17 +57,10 @@ int main() {
     Bind(listenfd, (SA *) &servaddr, sizeof(servaddr));
     
     Listen(listenfd, LISTENQ);
-
+    
     if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
         err_sys("Can't set SIGCHLD signal to SIG_IGN");
     }
-//    if (signal(SIGINT, intrupt_handler) == SIG_ERR) {
-//        err_sys("Can't set SIGINT signal to handler");
-//    }
-//    if (signal(SIGQUIT, quit_handler) == SIG_ERR) {
-//        err_sys("Can't set SIGQUIT signal to handler");
-//    }
-    
     
     for (;;) {
         clilen = sizeof(cliaddr);
@@ -93,14 +83,23 @@ int main() {
                 goto fail;
             }
 
-            printf("version: %d\n", pclientInfo->VN);
-            printf("cd: %d\n", pclientInfo->CD);
-            printf("port: %d\n", ntohs(pclientInfo->DST_PORT));
-            printf("ip: %x\n", ntohl(pclientInfo->DST_IP));
+            printf("======SOCK ESTABLISHED======\n");
+            printf("VN: %d CD: %d\n", pclientInfo->VN, pclientInfo->CD);
             
-            if (pclientInfo->CD == 1) {
+            char *dst_ip = (char*)&pclientInfo->DST_IP;
+            printf("DST_IP: %u.%u.%u.%u, ", dst_ip[0] & 0xFF, dst_ip[1] & 0xFF, dst_ip[2] & 0xFF, dst_ip[3] & 0xFF);
+            printf("DST_PORT: %d\n", ntohs(pclientInfo->DST_PORT));
+            
+            char *src_ip = (char *)&cliaddr.sin_addr.s_addr;
+            printf("SRC_IP: %u.%u.%u.%u, ", src_ip[0] & 0xFF, src_ip[1] & 0xFF, src_ip[2] & 0xFF, src_ip[3] & 0xFF);
+            printf("SRC_PORT: %d\n", ntohs(cliaddr.sin_port));
+
+
+            
+            if (pclientInfo->CD == SOCK_CONNECT) {
                 // Connect mode
 
+                printf("SOCKS_CONNECT GRANTED\n");
                 // grant access
                 pclientInfo->VN = 0;
                 pclientInfo->CD = SOCK_GRANTED;
@@ -118,9 +117,10 @@ int main() {
                 proxy_pass(connfd, rsockfd);
                 
                 Close(rsockfd);
-            } else if (pclientInfo->CD == 2) {
+            } else if (pclientInfo->CD == SOCK_BIND) {
                 // Bind mode
                 
+                printf("SOCKS_BIND GRANTED\n");
                 int rlistenfd = Socket(AF_INET, SOCK_STREAM, 0);
                 
                 bzero(&servaddr, sizeof(servaddr));
@@ -155,16 +155,16 @@ int main() {
                     Writen(connfd, pclientInfo, sizeof(ClientInfo));
                     proxy_pass(connfd, rsockfd);
                 } else {
+                    printf("SOCKS_BIND Client Failed\n");
                     pclientInfo->CD = SOCK_REJECTED;
                     Write(connfd, pclientInfo, sizeof(ClientInfo));
                 }
                 Close(rsockfd);
             }
-            printf("======conn lost======\n");
-            fflush(stdout);
         fail:
             Close(connfd);
             free(pclientInfo);
+            fflush(stdout);
             exit(0);
         }
     }
@@ -190,13 +190,13 @@ void proxy_pass(int csock, int rsock) {
         rfds = rfds_a;
         Select(nfds, &rfds, NULL, NULL, &timeout);
         if (FD_ISSET(rsock, &rfds)) {
-            n = read(rsock, buffer, BUF_SIZE);
+            n = ReadPrint(rsock, buffer, BUF_SIZE);
             if (n > 0)
                 Writen(csock, buffer, n);
             else
                 break;
         } else if (FD_ISSET(csock, &rfds)) {
-            n = read(csock, buffer, BUF_SIZE);
+            n = ReadPrint(csock, buffer, BUF_SIZE);
             if (n > 0)
                 Writen(rsock, buffer, n);
             else
@@ -205,13 +205,22 @@ void proxy_pass(int csock, int rsock) {
     }
 }
 
-void intrupt_handler(int sig) {
-    if (SOCK_MASTER_PROC_ID == getpid()) {
-        //kill(-SOCK_MASTER_PROC_ID, SIGQUIT);
-    }
-    exit(1);
-}
+ssize_t ReadPrint(int sockfd, char *buffer, ssize_t size) {
+    ssize_t n = read(sockfd, buffer, size);
+    if (n <= 0)
+        return n;
 
-void quit_handler(int sig) {
-    exit(1);
+    printf("Proxying %lu bytes...", n);
+    
+    for (ssize_t i = 0; i < n && i < PARTIAL_SIZE; i++) {
+        if (i % 10 == 0)
+            printf("\n");
+        printf("%02x ", buffer[i] & 0xFF);
+    }
+
+    if (n < PARTIAL_SIZE)
+        printf("...\n");
+    
+    fflush(stdout);
+    return n;
 }
