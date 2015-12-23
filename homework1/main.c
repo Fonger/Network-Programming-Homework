@@ -64,12 +64,12 @@ int main() {
     if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
         err_sys("Can't set SIGCHLD signal to SIG_IGN");
     }
-    if (signal(SIGINT, intrupt_handler) == SIG_ERR) {
-        err_sys("Can't set SIGINT signal to handler");
-    }
-    if (signal(SIGQUIT, quit_handler) == SIG_ERR) {
-        err_sys("Can't set SIGQUIT signal to handler");
-    }
+//    if (signal(SIGINT, intrupt_handler) == SIG_ERR) {
+//        err_sys("Can't set SIGINT signal to handler");
+//    }
+//    if (signal(SIGQUIT, quit_handler) == SIG_ERR) {
+//        err_sys("Can't set SIGQUIT signal to handler");
+//    }
     
     
     for (;;) {
@@ -135,6 +135,8 @@ int main() {
                 
                 Listen(rlistenfd, LISTENQ);
                 
+                in_addr_t remote_addr = pclientInfo->DST_IP;
+                
                 pclientInfo->VN = 0;
                 pclientInfo->CD = SOCK_GRANTED;
                 pclientInfo->DST_IP = htonl(INADDR_ANY);
@@ -149,7 +151,7 @@ int main() {
                 Close(rlistenfd);
                 
                 // Check if client address equals to destination ip
-                if (servaddr.sin_addr.s_addr == pclientInfo->DST_IP) {
+                if (cliaddr.sin_addr.s_addr == remote_addr) {
                     Writen(connfd, pclientInfo, sizeof(ClientInfo));
                     proxy_pass(connfd, rsockfd);
                 } else {
@@ -205,7 +207,7 @@ void proxy_pass(int csock, int rsock) {
 
 void intrupt_handler(int sig) {
     if (SOCK_MASTER_PROC_ID == getpid()) {
-        kill(-SOCK_MASTER_PROC_ID, SIGQUIT);
+        //kill(-SOCK_MASTER_PROC_ID, SIGQUIT);
     }
     exit(1);
 }
