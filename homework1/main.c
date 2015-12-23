@@ -123,13 +123,13 @@ int main() {
                         if (n > 0)
                             Writen(connfd, buffer, n);
                         else
-                            FD_CLR(rsockfd, &rfds_a);
+                            break;
                     } else if (FD_ISSET(connfd, &rfds)) {
                         ssize_t n = read(connfd, buffer, BUF_SIZE);
                         if (n > 0)
                             Writen(rsockfd, buffer, n);
                         else
-                            FD_CLR(connfd, &rfds_a);
+                            break;
                     } else break;
                 }
                 Close(rsockfd);
@@ -164,7 +164,7 @@ int main() {
                 Close(rlistenfd);
                 
                 // Check if client address equals to destination ip
-                if (cliaddr.sin_addr.s_addr == pclientInfo->DST_IP) {
+                if (servaddr.sin_addr.s_addr == pclientInfo->DST_IP) {
                     Writen(connfd, pclientInfo, sizeof(ClientInfo));
                     
                     fd_set rfds;
@@ -174,7 +174,7 @@ int main() {
                     FD_SET(rsockfd, &rfds_a);
                     FD_SET(connfd, &rfds_a);
                     
-                    int nfds = 7;
+                    int nfds = 8;
                     
                     struct timeval timeout;
                     timeout.tv_sec = 120;
@@ -188,13 +188,13 @@ int main() {
                             if (n > 0)
                                 Writen(connfd, buffer, n);
                             else
-                                FD_CLR(rsockfd, &rfds_a);
+                                break;
                         } else if (FD_ISSET(connfd, &rfds)) {
                             ssize_t n = read(connfd, buffer, BUF_SIZE);
                             if (n > 0)
                                 Writen(rsockfd, buffer, n);
                             else
-                                FD_CLR(connfd, &rfds_a);
+                                break;
                         } else break;
                     }
                 } else {
@@ -203,7 +203,7 @@ int main() {
                 }
                 Close(rsockfd);
             }
-            printf("conn lost\n");
+            printf("======conn lost======\n");
             fflush(stdout);
         fail:
             Close(connfd);
