@@ -33,7 +33,7 @@ typedef struct __attribute__((__packed__)) {
 #define SOCK_GRANTED  90
 #define SOCK_REJECTED 91
 
-int new_socket();
+void proxy_pass(int csock, int rsock);
 
 char buffer[BUF_SIZE];
 
@@ -102,36 +102,8 @@ int main() {
                 
                 Connect(rsockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
                 
-                fd_set rfds;
-                fd_set rfds_a;
+                proxy_pass(connfd, rsockfd);
                 
-                FD_ZERO(&rfds_a);
-                FD_SET(rsockfd, &rfds_a);
-                FD_SET(connfd, &rfds_a);
-
-                int nfds = 6;
-                
-                struct timeval timeout;
-                timeout.tv_sec = 120;
-                timeout.tv_usec = 0;
-                
-                while (TRUE) {
-                    rfds = rfds_a;
-                    Select(nfds, &rfds, NULL, NULL, &timeout);
-                    if (FD_ISSET(rsockfd, &rfds)) {
-                        ssize_t n = read(rsockfd, buffer, BUF_SIZE);
-                        if (n > 0)
-                            Writen(connfd, buffer, n);
-                        else
-                            break;
-                    } else if (FD_ISSET(connfd, &rfds)) {
-                        ssize_t n = read(connfd, buffer, BUF_SIZE);
-                        if (n > 0)
-                            Writen(rsockfd, buffer, n);
-                        else
-                            break;
-                    } else break;
-                }
                 Close(rsockfd);
             } else if (pclientInfo->CD == 2) {
                 // Bind mode
@@ -166,37 +138,7 @@ int main() {
                 // Check if client address equals to destination ip
                 if (servaddr.sin_addr.s_addr == pclientInfo->DST_IP) {
                     Writen(connfd, pclientInfo, sizeof(ClientInfo));
-                    
-                    fd_set rfds;
-                    fd_set rfds_a;
-                    
-                    FD_ZERO(&rfds_a);
-                    FD_SET(rsockfd, &rfds_a);
-                    FD_SET(connfd, &rfds_a);
-                    
-                    int nfds = 8;
-                    
-                    struct timeval timeout;
-                    timeout.tv_sec = 120;
-                    timeout.tv_usec = 0;
-                    
-                    while (TRUE) {
-                        rfds = rfds_a;
-                        Select(nfds, &rfds, NULL, NULL, &timeout);
-                        if (FD_ISSET(rsockfd, &rfds)) {
-                            ssize_t n = read(rsockfd, buffer, BUF_SIZE);
-                            if (n > 0)
-                                Writen(connfd, buffer, n);
-                            else
-                                break;
-                        } else if (FD_ISSET(connfd, &rfds)) {
-                            ssize_t n = read(connfd, buffer, BUF_SIZE);
-                            if (n > 0)
-                                Writen(rsockfd, buffer, n);
-                            else
-                                break;
-                        } else break;
-                    }
+                    proxy_pass(connfd, rsockfd);
                 } else {
                     pclientInfo->CD = SOCK_REJECTED;
                     Write(connfd, pclientInfo, sizeof(ClientInfo));
@@ -212,4 +154,38 @@ int main() {
         }
     }
     return 0;
+}
+
+void proxy_pass(int csock, int rsock) {
+    fd_set rfds;
+    fd_set rfds_a;
+    
+    FD_ZERO(&rfds_a);
+    FD_SET(rsock, &rfds_a);
+    FD_SET(csock, &rfds_a);
+    
+    int nfds = (csock > rsock ? csock : rsock) + 1;
+    ssize_t n;
+    
+    struct timeval timeout;
+    timeout.tv_sec = 120;
+    timeout.tv_usec = 0;
+    
+    while (TRUE) {
+        rfds = rfds_a;
+        Select(nfds, &rfds, NULL, NULL, &timeout);
+        if (FD_ISSET(rsock, &rfds)) {
+            n = read(rsock, buffer, BUF_SIZE);
+            if (n > 0)
+                Writen(csock, buffer, n);
+            else
+                break;
+        } else if (FD_ISSET(csock, &rfds)) {
+            n = read(csock, buffer, BUF_SIZE);
+            if (n > 0)
+                Writen(rsock, buffer, n);
+            else
+                break;
+        } else break;
+    }
 }
