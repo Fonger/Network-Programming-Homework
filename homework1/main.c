@@ -10,14 +10,9 @@
 #include <stdarg.h>
 #include "../lib/unp.h"
 
-
-#include   <sys/types.h>
-#include   <sys/ipc.h>
-#include   <sys/shm.h>
-
 #define BUF_SIZE 100000
 #define USERID_SIZE 50
-#define PARTIAL_SIZE 50
+#define PARTIAL_SIZE 10
 #define TRUE 1
 #define FALSE 0
 
@@ -210,16 +205,14 @@ ssize_t ReadPrint(int sockfd, char *buffer, ssize_t size) {
     if (n <= 0)
         return n;
 
-    printf("Proxying %lu bytes...", n);
-    
+    printf("\nProxying %lu bytes\n", n);
     for (ssize_t i = 0; i < n && i < PARTIAL_SIZE; i++) {
-        if (i % 10 == 0)
-            printf("\n");
         printf("%02x ", buffer[i] & 0xFF);
     }
 
-    if (n < PARTIAL_SIZE)
-        printf("...\n");
+    if (n > PARTIAL_SIZE)
+        printf("...");
+    printf("\n");
     
     fflush(stdout);
     return n;
