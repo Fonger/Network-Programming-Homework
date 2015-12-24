@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "../lib/unp.h"
+#include "firewall.h"
 
 #define BUF_SIZE 100000
 #define USERID_SIZE 50
@@ -36,7 +37,9 @@ char buffer[BUF_SIZE];
 
 int main() {
     printf("Hello, World!\n");
-
+    
+    init_firewall("firewall.txt");
+    
     int listenfd, connfd;
 
     socklen_t clilen;
@@ -88,15 +91,19 @@ int main() {
             char *src_ip = (char *)&cliaddr.sin_addr.s_addr;
             printf("SRC_IP: %u.%u.%u.%u, ", src_ip[0] & 0xFF, src_ip[1] & 0xFF, src_ip[2] & 0xFF, src_ip[3] & 0xFF);
             printf("SRC_PORT: %d\n", ntohs(cliaddr.sin_port));
-
-
             
             if (pclientInfo->CD == SOCK_CONNECT) {
                 // Connect mode
 
-                printf("SOCKS_CONNECT GRANTED\n");
-                // grant access
                 pclientInfo->VN = 0;
+                if(!check_connect_ip(pclientInfo->DST_IP)) {
+                    printf("SOCKS_CONNECT REJECTED\n");
+                    pclientInfo->CD = SOCK_REJECTED;
+                    Writen(connfd, pclientInfo, sizeof(ClientInfo));
+                    goto fail;
+                }
+                
+                printf("SOCKS_CONNECT GRANTED\n");
                 pclientInfo->CD = SOCK_GRANTED;
                 Writen(connfd, pclientInfo, sizeof(ClientInfo));
                 

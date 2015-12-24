@@ -12,6 +12,7 @@
 		C47566651BDD8E33004BC9AE /* error.c in Sources */ = {isa = PBXBuildFile; fileRef = C47566641BDD8E33004BC9AE /* error.c */; };
 		C47566671BDD8E53004BC9AE /* written.c in Sources */ = {isa = PBXBuildFile; fileRef = C47566661BDD8E53004BC9AE /* written.c */; };
 		C4B9CEF31BDD7CBB00938913 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = C4B9CEF21BDD7CBB00938913 /* main.c */; };
+		C4C6585D1C2BFB09005645A9 /* firewall.c in Sources */ = {isa = PBXBuildFile; fileRef = C4C6585B1C2BFB09005645A9 /* firewall.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -34,6 +35,8 @@
 		C47566661BDD8E53004BC9AE /* written.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = written.c; sourceTree = "<group>"; };
 		C4B9CEEF1BDD7CBB00938913 /* homework1 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = homework1; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4B9CEF21BDD7CBB00938913 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		C4C6585B1C2BFB09005645A9 /* firewall.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = firewall.c; sourceTree = "<group>"; };
+		C4C6585C1C2BFB09005645A9 /* firewall.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firewall.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +83,8 @@
 			isa = PBXGroup;
 			children = (
 				C4B9CEF21BDD7CBB00938913 /* main.c */,
+				C4C6585B1C2BFB09005645A9 /* firewall.c */,
+				C4C6585C1C2BFB09005645A9 /* firewall.h */,
 			);
 			path = homework1;
 			sourceTree = "<group>";
@@ -143,6 +148,7 @@
 				C47566671BDD8E53004BC9AE /* written.c in Sources */,
 				C47566631BDD8D85004BC9AE /* wrapunix.c in Sources */,
 				C4B9CEF31BDD7CBB00938913 /* main.c in Sources */,
+				C4C6585D1C2BFB09005645A9 /* firewall.c in Sources */,
 				C47566621BDD8D85004BC9AE /* wrapsock.c in Sources */,
 				C47566651BDD8E33004BC9AE /* error.c in Sources */,
 			);
