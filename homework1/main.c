@@ -96,7 +96,7 @@ int main() {
                 // Connect mode
 
                 pclientInfo->VN = 0;
-                if(!check_connect_ip(pclientInfo->DST_IP)) {
+                if(deny_connect_ip(pclientInfo->DST_IP)) {
                     printf("SOCKS_CONNECT REJECTED\n");
                     pclientInfo->CD = SOCK_REJECTED;
                     Writen(connfd, pclientInfo, sizeof(ClientInfo));
@@ -123,6 +123,19 @@ int main() {
                 // Bind mode
                 
                 printf("SOCKS_BIND GRANTED\n");
+                
+                pclientInfo->VN = 0;
+                
+                if(deny_bind_ip(pclientInfo->DST_IP)) {
+                    printf("SOCKS_BIND REJECTED\n");
+                    
+                    pclientInfo->CD = SOCK_REJECTED;
+                    Writen(connfd, pclientInfo, sizeof(ClientInfo));
+                    goto fail;
+                }
+                
+                printf("SOCKS_BIND GRANTED\n");
+                
                 int rlistenfd = Socket(AF_INET, SOCK_STREAM, 0);
                 
                 bzero(&servaddr, sizeof(servaddr));
@@ -139,7 +152,6 @@ int main() {
                 
                 in_addr_t remote_addr = pclientInfo->DST_IP;
                 
-                pclientInfo->VN = 0;
                 pclientInfo->CD = SOCK_GRANTED;
                 pclientInfo->DST_IP = htonl(INADDR_ANY);
                 pclientInfo->DST_PORT = servaddr.sin_port;

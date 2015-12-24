@@ -12,6 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 void init_firewall(char *conf);
-int check_connect_ip(in_addr_t ip);
-int check_bind_ip(in_addr_t ip);
+int deny_connect_ip(in_addr_t ip);
+int deny_bind_ip(in_addr_t ip);
 #endif /* firewall_h */
