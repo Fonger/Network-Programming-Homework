@@ -20,9 +20,15 @@
 #define F_READING 1
 #define F_WRITING 2
 #define F_DONE 3
+typedef struct {
+    char*   host;
+    ushort  port;
+    int     status;
+} SOCKS4;
 
 typedef struct {
     int     index;
+    SOCKS4* proxy;
     char*   host;
     ushort  port;
     FILE*   batch;
@@ -250,6 +256,17 @@ Client** parse_query_string(char *querystring) {
             case 'f':
                 clients[i]->batch = fopen(val, "r");
                 break;
+            case 's':
+                if (clients[i]->proxy == NULL) {
+                    clients[i]->proxy = malloc(sizeof(SOCKS4));
+                    bzero(clients[i]->proxy, sizeof(SOCKS4));
+                }
+                
+                if (key[1] == 'h') {
+                    clients[i]->proxy->host = strndup(val, 100);
+                } else if (key[1] == 'p') {
+                    clients[i]->proxy->port = atoi(val);
+                }
             default:
                 break;
         }
@@ -262,7 +279,7 @@ void print_html_frame(Client* *clients) {
     printf("<html>\n");
     printf("<head>\n");
     printf("	<meta http-equiv=\"Content-Type\" content=\"text/html; charset=big5\" />\n");
-    printf("	<title>Network Programming Homework 3</title>\n");
+    printf("	<title>Network Programming Homework 4</title>\n");
     printf("</head>\n");
     printf("<body bgcolor=#336699>\n");
     printf("	<font face=\"Courier New\" size=2 color=#FFFF99>\n");
