@@ -20,10 +20,26 @@
 #define F_READING 1
 #define F_WRITING 2
 #define F_DONE 3
+#define F_CONNECTING_PROXY 4
+#define F_READING_PROXY 5
+#define F_WRITING_PROXY 6
+
+#define SOCK_CONNECT  1
+#define SOCK_BIND     2
+#define SOCK_GRANTED  90
+#define SOCK_REJECTED 91
+
+typedef struct __attribute__((__packed__)) {
+    unsigned char  VN;
+    unsigned char  CD;
+    unsigned short DST_PORT;
+    unsigned int   DST_IP;
+    char           userid[50];
+} SOCKS4Info;
+
 typedef struct {
     char*   host;
     ushort  port;
-    int     status;
 } SOCKS4;
 
 typedef struct {
@@ -73,9 +89,17 @@ int main() {
     for (int i = 0; i < MAX_CLIENT; i++) {
         if (clients[i] == NULL)
             continue;
-        int clientfd = new_client_fd(clients[i]->host, clients[i]->port);
-        clients[i]->sockfd = clientfd;
-        clients[i]->status = F_CONNECTING;
+        int clientfd;
+        if (clients[i]->proxy == NULL) {
+            clientfd = new_client_fd(clients[i]->host, clients[i]->port);
+            clients[i]->sockfd = clientfd;
+            clients[i]->status = F_CONNECTING;
+        } else {
+            clientfd = new_client_fd(clients[i]->proxy->host, clients[i]->proxy->port);
+            clients[i]->sockfd = clientfd;
+            clients[i]->status = F_CONNECTING_PROXY;
+        }
+
         FD_SET(clientfd, &rfds_a);
         FD_SET(clientfd, &wfds_a);
         nclients++;
@@ -93,8 +117,48 @@ int main() {
 
             if (c == NULL)
                 continue;
-            
-            if (c->status == F_CONNECTING &&
+            if (c->status == F_CONNECTING_PROXY && (FD_ISSET(c->sockfd, &rfds) || FD_ISSET(c->sockfd, &wfds))) {
+                int error;
+                socklen_t clilen = sizeof(struct sockaddr_in);
+                if (getsockopt(c->sockfd, SOL_SOCKET, SO_ERROR, &error, &clilen) < 0 ||
+                    error != 0) {
+                    err_sys("non-blocking connect proxy failed");
+                }
+                c->status = F_WRITING_PROXY;
+                FD_CLR(c->sockfd, &rfds);
+            } else if (c->status == F_WRITING_PROXY && FD_ISSET(c->sockfd, &wfds)) {
+                c->status = F_READING_PROXY;
+                SOCKS4Info info;
+                info.VN = 4;
+                info.CD = SOCK_CONNECT;
+                struct hostent *he = gethostbyname(c->proxy->host);
+                info.DST_IP = ((struct in_addr *)he->h_addr)->s_addr;
+                info.DST_PORT = htons(c->proxy->port);
+                strcpy(info.userid, "ras-cgi");
+                
+                Writen(c->sockfd, &info, sizeof(info));
+                
+                FD_SET(c->sockfd, &rfds);
+                FD_CLR(c->sockfd, &wfds);
+            } else if (c->status == F_READING_PROXY && FD_ISSET(c->sockfd, &rfds)) {
+                
+                SOCKS4Info info;
+                ssize_t rResult;
+                if ((rResult = read(c->sockfd, &info, sizeof(info))) > 0) {
+                    if (info.VN == 0 && info.CD == SOCK_GRANTED) {
+                        c->status = F_READING;
+                        // sockfd is already in rfds
+                    } else {
+                        printf("SOCKS server rejected<br>\n");
+                        fflush(stdout);
+                        FD_CLR(c->sockfd, &rfds);
+                        FD_CLR(c->sockfd, &wfds);
+                    }
+                } else if (rResult < 0) {
+                    err_sys("SOCKS4 read err");
+                }
+                
+            } else if (c->status == F_CONNECTING &&
                 (FD_ISSET(c->sockfd, &rfds) || FD_ISSET(c->sockfd, &wfds))) {
 
 
