@@ -35,7 +35,7 @@ void init_firewall(char *conf) {
         int bits;
         
         int result = sscanf(buffer, "permit %c %d.%d.%d.%d/%d", &method, &ip[0], &ip[1], &ip[2], &ip[3], &bits);
-        if (result != 6 || bits > 32) {
+        if (result != 6 || bits > 32 || bits < 0) {
             fprintf(stderr, "Firewall conf syntax error at line %d\n", line);
             exit(2);
         }
@@ -45,7 +45,10 @@ void init_firewall(char *conf) {
         bits = 32 - bits;
         Permit permit;
         permit.bit_shift = bits;
-        permit.network_ip = (ip_addr << bits) >> bits;
+        if (bits == 32)
+            permit.network_ip = 0;
+        else
+            permit.network_ip = (ip_addr << bits) >> bits;
         
         if (method == 'b') {
             b_permits[b_permit_size++] = permit;
@@ -62,6 +65,8 @@ void init_firewall(char *conf) {
 int deny_bind_ip(in_addr_t ip) {
     for (int i = 0; i < b_permit_size; i++) {
         int bit = b_permits[i].bit_shift;
+        if (bit == 32)
+            return 0;
         if (!(((ip << bit) >> bit) ^ b_permits[i].network_ip))
             return 0;
     }
@@ -72,6 +77,8 @@ int deny_bind_ip(in_addr_t ip) {
 int deny_connect_ip(in_addr_t ip) {
     for (int i = 0; i < c_permit_size; i++) {
         int bit = c_permits[i].bit_shift;
+        if (bit == 32)
+            return 0;
         if (!(((ip << bit) >> bit) ^ c_permits[i].network_ip))
             return 0;
     }
