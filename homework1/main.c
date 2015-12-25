@@ -30,6 +30,8 @@ typedef struct {
     int     status;
     int     dying;
     char*   lastcmd;
+    ssize_t lastcmd_len;
+    ssize_t lastcmd_pos;
 } Client;
 
 int new_client_fd(char *hostname, ushort port);
@@ -39,7 +41,7 @@ void printc(Client* client, char* content, int bold);
 char *str_replace(char *orig, char *rep, char *with);
 
 int main() {
-    chdir("/Users/Fonger/Desktop/HW3 (2)/server_file/test");
+    chdir("/Users/jerry/Downloads/HW3/server_file/test");
 
     printf("Content-Type: text/html\n\n");
     //setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&f1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&f2=t5.txt", 1);
@@ -78,7 +80,7 @@ int main() {
         /* restore previous selected fds */
         memcpy(&rfds, &rfds_a, sizeof(rfds));
         memcpy(&wfds, &wfds_a, sizeof(wfds));
-        
+        usleep(500);
         Select(nfds, &rfds, &wfds, NULL, NULL);
         
         for (int i = 0; i < MAX_CLIENT; i++) {
@@ -124,43 +126,57 @@ int main() {
                 }
                 else if (rResult < 0) {
                     if (errno != EWOULDBLOCK) {
-                        perror("read socket failed");
+                        printf("read socket failed\n");
+                    } else {
+                        fprintf(stderr, "read socket EWOULDBLOCK\n");
+                        fflush(stderr);
                     }
                 }
             } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
 
                 char* cmd;
                 
-                if (c->lastcmd != NULL)
+                if (c->lastcmd != NULL) {
                     cmd = c->lastcmd;
-                else
+                } else {
                     cmd = malloc(MAX_LINE);
-                
-                if (fgets(cmd, MAX_LINE, c->batch) != NULL) {
-                    if (write(c->sockfd, cmd, strlen(cmd)) < 0) {
-                        if (errno == EWOULDBLOCK) {
-                            c->lastcmd = cmd;
-                            continue;
-                        } else
-                            err_sys("Write cmd failed");
+
+                    if (fgets(cmd, MAX_LINE, c->batch) == NULL && c->status != F_DONE) {
+                        c->status = F_DONE;
+                        FD_CLR(c->sockfd, &wfds);
+                        nclients--;
+                        continue;
                     }
-
-                    printc(c, cmd, TRUE);
-                    
-                    if (strncmp(cmd, "exit", 4) == 0)
-                        c->dying = TRUE;
-
-                    free(cmd);
-                    c->lastcmd = NULL;
-                    
-                    c->status = F_READING;
-                    FD_SET(c->sockfd, &rfds);
+                    c->lastcmd_len = strlen(cmd);
+                    c->lastcmd_pos = 0;
                 }
-                else if (c->status != F_DONE) {
-                    c->status = F_DONE;
-                    FD_CLR(c->sockfd, &wfds);
-                    nclients--;
+
+                ssize_t n_written;
+                if ((n_written = write(c->sockfd, &cmd[c->lastcmd_pos], c->lastcmd_len - c->lastcmd_pos)) == -1) {
+                    if (errno == EWOULDBLOCK) {
+                        c->lastcmd = cmd;
+                        c->lastcmd_pos += n_written;
+                        continue;
+                    } else
+                        err_sys("Write cmd failed");
                 }
+                if (c->lastcmd_pos < c->lastcmd_len) {
+                    c->lastcmd = cmd;
+                    c->lastcmd_pos += n_written;
+                    continue;
+                }
+
+                printc(c, cmd, TRUE);
+                
+                if (strncmp(cmd, "exit", 4) == 0)
+                    c->dying = TRUE;
+                
+                free(cmd);
+                c->lastcmd = NULL;
+                
+                c->status = F_READING;
+                FD_SET(c->sockfd, &rfds);
+                
             }
         }
     }
