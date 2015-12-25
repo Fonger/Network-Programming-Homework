@@ -38,7 +38,7 @@ char buffer[BUF_SIZE];
 int main() {
     printf("Hello, World!\n");
     
-    init_firewall("firewall.txt");
+    init_firewall("socks.conf");
     
     int listenfd, connfd;
 
@@ -50,7 +50,7 @@ int main() {
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(SERV_PORT);
+    servaddr.sin_port = htons(19700);
 
     Bind(listenfd, (SA *) &servaddr, sizeof(servaddr));
     

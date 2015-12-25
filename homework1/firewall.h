@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "../lib/unp.h"
 void init_firewall(char *conf);
 int deny_connect_ip(in_addr_t ip);
 int deny_bind_ip(in_addr_t ip);

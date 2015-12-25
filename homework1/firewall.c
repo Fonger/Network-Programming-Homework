@@ -22,7 +22,10 @@ void init_firewall(char *conf) {
     FILE *file = fopen(conf, "r");
     char buffer[100];
     int line = 0;
-    
+    if (file == NULL) {
+        fprintf(stderr, "Firewall conf file: %s doesn't exist", conf);
+        exit(2);
+    }
     while (fgets(buffer, sizeof(buffer), file) != NULL) {
         line++;
         
