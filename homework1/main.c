@@ -155,14 +155,13 @@ int main() {
                 if ((n_written = write(c->sockfd, &cmd[c->lastcmd_pos], c->lastcmd_len - c->lastcmd_pos)) == -1) {
                     if (errno == EWOULDBLOCK) {
                         c->lastcmd = cmd;
-                        c->lastcmd_pos += n_written;
-                        continue;
                     } else
                         err_sys("Write cmd failed");
+                } else {
+                    c->lastcmd_pos += n_written;
                 }
                 if (c->lastcmd_pos < c->lastcmd_len) {
                     c->lastcmd = cmd;
-                    c->lastcmd_pos += n_written;
                     continue;
                 }
 
