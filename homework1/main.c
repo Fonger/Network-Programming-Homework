@@ -135,7 +135,7 @@ int main() {
                 info.DST_PORT = htons(c->port);
                 strcpy(info.userid, "ras-cgi");
                 
-                Writen(c->sockfd, &info, sizeof(info));
+                Writen(c->sockfd, &info, sizeof(info) - sizeof(info.userid) + strlen(info.userid) + 1);
 
                 c->status = F_READING_PROXY;
                 FD_SET(c->sockfd, &rfds);
