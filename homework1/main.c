@@ -289,7 +289,8 @@ Client** parse_query_string(char *querystring) {
         char* ptr;
         char *key = strtok_r(item, "=", &ptr);
 
-        if (key == NULL || strlen(key) != 2)
+        ssize_t keylen = strlen(key);
+        if (key == NULL || keylen < 2)
             break;
         
         char *val = strtok_r(NULL, "", &ptr);
@@ -297,7 +298,7 @@ Client** parse_query_string(char *querystring) {
         if (val == NULL)
             break;
         
-        int clientid = atoi(key + 1);
+        int clientid = atoi(&key[keylen - 1]);
         
         if (clientid == 0 || clientid > 5)
             break;
@@ -308,6 +309,7 @@ Client** parse_query_string(char *querystring) {
             bzero(clients[i], sizeof(Client));
             clients[i]->index = i;
             clients[i]->dying = FALSE;
+            clients[i]->proxy = NULL;
         }
 
         switch (*key) {
@@ -324,6 +326,8 @@ Client** parse_query_string(char *querystring) {
                 if (clients[i]->proxy == NULL) {
                     clients[i]->proxy = malloc(sizeof(SOCKS4));
                     bzero(clients[i]->proxy, sizeof(SOCKS4));
+                    fprintf(stderr, "allocating QQ\n");
+                    fflush(stderr);
                 }
                 
                 if (key[1] == 'h') {
