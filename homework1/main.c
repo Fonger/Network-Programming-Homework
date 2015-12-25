@@ -80,7 +80,6 @@ int main() {
         /* restore previous selected fds */
         memcpy(&rfds, &rfds_a, sizeof(rfds));
         memcpy(&wfds, &wfds_a, sizeof(wfds));
-        usleep(500);
         Select(nfds, &rfds, &wfds, NULL, NULL);
         
         for (int i = 0; i < MAX_CLIENT; i++) {
