@@ -127,26 +127,30 @@ int main() {
                 c->status = F_WRITING_PROXY;
                 FD_CLR(c->sockfd, &rfds);
             } else if (c->status == F_WRITING_PROXY && FD_ISSET(c->sockfd, &wfds)) {
-                c->status = F_READING_PROXY;
                 SOCKS4Info info;
                 info.VN = 4;
                 info.CD = SOCK_CONNECT;
-                struct hostent *he = gethostbyname(c->proxy->host);
+                struct hostent *he = gethostbyname(c->host);
                 info.DST_IP = ((struct in_addr *)he->h_addr)->s_addr;
-                info.DST_PORT = htons(c->proxy->port);
+                info.DST_PORT = htons(c->port);
                 strcpy(info.userid, "ras-cgi");
                 
                 Writen(c->sockfd, &info, sizeof(info));
-                
+
+                c->status = F_READING_PROXY;
                 FD_SET(c->sockfd, &rfds);
                 FD_CLR(c->sockfd, &wfds);
+
             } else if (c->status == F_READING_PROXY && FD_ISSET(c->sockfd, &rfds)) {
                 
                 SOCKS4Info info;
                 ssize_t rResult;
                 if ((rResult = read(c->sockfd, &info, sizeof(info))) > 0) {
+                    fprintf(stderr, "VN=%d CD=%d\n", info.VN, info.CD);
                     if (info.VN == 0 && info.CD == SOCK_GRANTED) {
                         c->status = F_READING;
+                        fprintf(stderr, "READSOCK~~\n");
+                        fflush(stderr);
                         // sockfd is already in rfds
                     } else {
                         printf("SOCKS server rejected<br>\n");
