@@ -63,7 +63,7 @@ void printc(Client* client, char* content, int bold);
 char *str_replace(char *orig, char *rep, char *with);
 
 int main() {
-    chdir("/Users/jerry/Downloads/HW3/server_file/test");
+    //chdir("/Users/jerry/Downloads/HW3/server_file/test");
 
     printf("Content-Type: text/html\n\n");
     //setenv("QUERY_STRING", "h1=nplinux3.cs.nctu.edu.tw&p1=9877&f1=t1.txt&h2=nplinux3.cs.nctu.edu.tw&p2=9877&f2=t5.txt", 1);
@@ -149,12 +149,9 @@ int main() {
                     fprintf(stderr, "VN=%d CD=%d\n", info.VN, info.CD);
                     if (info.VN == 0 && info.CD == SOCK_GRANTED) {
                         c->status = F_READING;
-                        fprintf(stderr, "READSOCK~~\n");
-                        fflush(stderr);
                         // sockfd is already in rfds
                     } else {
                         printf("SOCKS server rejected<br>\n");
-                        fflush(stdout);
                         FD_CLR(c->sockfd, &rfds);
                         FD_CLR(c->sockfd, &wfds);
                     }
@@ -164,8 +161,6 @@ int main() {
                 
             } else if (c->status == F_CONNECTING &&
                 (FD_ISSET(c->sockfd, &rfds) || FD_ISSET(c->sockfd, &wfds))) {
-
-
                 int error;
                 socklen_t clilen = sizeof(struct sockaddr_in);
                 if (getsockopt(c->sockfd, SOL_SOCKET, SO_ERROR, &error, &clilen) < 0 ||
@@ -199,10 +194,9 @@ int main() {
                 }
                 else if (rResult < 0) {
                     if (errno != EWOULDBLOCK) {
-                        printf("read socket failed\n");
+                        err_sys("read socket failed\n");
                     } else {
                         fprintf(stderr, "read socket EWOULDBLOCK\n");
-                        fflush(stderr);
                     }
                 }
             } else if (c->status == F_WRITING && FD_ISSET(c->sockfd, &wfds)) {
@@ -252,7 +246,7 @@ int main() {
             }
         }
     }
-    
+    fprintf(stderr, "hw4.cgi end!\n");
     return 0;
 }
 
@@ -295,17 +289,17 @@ Client** parse_query_string(char *querystring) {
 
         ssize_t keylen = strlen(key);
         if (key == NULL || keylen < 2)
-            break;
+            goto next_parameter;
         
         char *val = strtok_r(NULL, "", &ptr);
         
-        if (val == NULL)
-            break;
+        if (val == NULL || *val == '\0')
+            goto next_parameter;
         
         int clientid = atoi(&key[keylen - 1]);
         
         if (clientid == 0 || clientid > 5)
-            break;
+            goto next_parameter;
         
         int i = clientid - 1;
         if (clients[i] == NULL) {
@@ -340,8 +334,9 @@ Client** parse_query_string(char *querystring) {
                     clients[i]->proxy->port = atoi(val);
                 }
             default:
-                break;
+                goto next_parameter;
         }
+    next_parameter:
         item = strtok(NULL, "&");
     }
     return clients;
