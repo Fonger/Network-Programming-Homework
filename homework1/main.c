@@ -24,10 +24,10 @@
 #define F_READING_PROXY 5
 #define F_WRITING_PROXY 6
 
-#define SOCK_CONNECT  1
-#define SOCK_BIND     2
-#define SOCK_GRANTED  90
-#define SOCK_REJECTED 91
+#define SOCKS_CONNECT  1
+#define SOCKS_BIND     2
+#define SOCKS_GRANTED  90
+#define SOCKS_REJECTED 91
 
 typedef struct __attribute__((__packed__)) {
     unsigned char  VN;
@@ -129,7 +129,7 @@ int main() {
             } else if (c->status == F_WRITING_PROXY && FD_ISSET(c->sockfd, &wfds)) {
                 SOCKS4Info info;
                 info.VN = 4;
-                info.CD = SOCK_CONNECT;
+                info.CD = SOCKS_CONNECT;
                 struct hostent *he = gethostbyname(c->host);
                 info.DST_IP = ((struct in_addr *)he->h_addr)->s_addr;
                 info.DST_PORT = htons(c->port);
@@ -147,7 +147,7 @@ int main() {
                 ssize_t rResult;
                 if ((rResult = read(c->sockfd, &info, sizeof(info))) > 0) {
                     fprintf(stderr, "VN=%d CD=%d\n", info.VN, info.CD);
-                    if (info.VN == 0 && info.CD == SOCK_GRANTED) {
+                    if (info.VN == 0 && info.CD == SOCKS_GRANTED) {
                         c->status = F_READING;
                         // sockfd is already in rfds
                     } else {
